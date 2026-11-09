@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "swift-build-debug",
+      "type": "shell",
+      "command": "swift build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$swiftc"
+    },
+    {
+      "label": "build-app",
+      "type": "shell",
+      "command": "./build.sh",
+      "group": "build",
+      "problemMatcher": "$swiftc"
+    },
+    {
+      "label": "build-probe",
+      "type": "shell",
+      "command": "./build.sh --probe",
+      "group": "build",
+      "problemMatcher": "$swiftc"
+    }
+  ]
+}

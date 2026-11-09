@@ -1,0 +1,11 @@
+"NSBluetoothAlwaysUsageDescription" = "Hexa 仅在你请求后使用蓝牙，在“监视器 > 电源”和 Dynamic Island 中读取已连接配件的电量。";
+
+"NSMicrophoneUsageDescription" = "Hexa 从不使用麦克风录音。混音器或 Dynamic Island 均衡器读取其他 App 的声音时，macOS 可能会请求此访问权限。";
+
+"NSAudioCaptureUsageDescription" = "Hexa会捕获当前播放器的音频，用于Dynamic Island均衡器，也会捕获您选择用于混音的应用音频。";
+"NSCalendarsFullAccessUsageDescription" = "Hexa会读取您的日历事件，以在Dynamic Island中显示日程和倒计时。";
+"NSAppleEventsUsageDescription" = "Hexa 只在你使用需要它的功能时向其他应用发送命令：播放控制会发给当前音乐播放器，将受保护项目移到废纸篓会发给访达，运行需要密码的 Homebrew 命令会发给终端。";
+"NSScreenCaptureUsageDescription" = "Hexa 仅在你请求后捕获屏幕内容和窗口标题，供截图和 OCR 工具使用。";
+"NSDesktopFolderUsageDescription" = "Hexa 仅在你请求后访问你的“桌面”文件夹，以扫描清理器和卸载器的缓存与残留文件。";
+"NSDocumentsFolderUsageDescription" = "Hexa 仅在你请求后访问你的“文稿”文件夹，以扫描清理器和卸载器的缓存与残留文件。";
+"NSDownloadsFolderUsageDescription" = "Hexa 仅在你请求后访问你的“下载”文件夹，以扫描清理器和卸载器的缓存与残留文件。";

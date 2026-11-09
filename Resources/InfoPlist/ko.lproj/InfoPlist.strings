@@ -1,0 +1,11 @@
+"NSBluetoothAlwaysUsageDescription" = "Hexa는 요청한 뒤에만 Bluetooth를 사용해 모니터 > 전원과 Dynamic Island에서 연결된 액세서리의 배터리 잔량을 읽습니다.";
+
+"NSMicrophoneUsageDescription" = "Hexa는 마이크로 녹음하지 않습니다. 믹서나 Dynamic Island 이퀄라이저가 다른 앱의 소리를 읽을 때 macOS가 이 접근을 요청할 수 있습니다.";
+
+"NSAudioCaptureUsageDescription" = "Hexa는 Dynamic Island 이퀄라이저를 위해 현재 플레이어의 오디오를 캡처하고, 믹싱을 위해 선택한 앱의 오디오도 캡처합니다.";
+"NSCalendarsFullAccessUsageDescription" = "Hexa는 캘린더 이벤트를 읽어 Dynamic Island에 일정과 카운트다운을 표시합니다.";
+"NSAppleEventsUsageDescription" = "Hexa는 필요한 기능을 사용할 때만 다른 앱에 명령을 보냅니다. 재생 컨트롤에서는 현재 음악 플레이어에, 보호된 항목을 휴지통으로 옮길 때는 Finder에, 암호를 요청하는 Homebrew 명령을 실행할 때는 Terminal에 보냅니다.";
+"NSScreenCaptureUsageDescription" = "Hexa는 요청한 뒤에만 화면 캡처 및 OCR 도구를 위해 화면 콘텐츠와 윈도우 제목을 캡처합니다.";
+"NSDesktopFolderUsageDescription" = "Hexa는 요청한 뒤에만 정리기 및 제거기의 캐시와 남은 파일을 검사하기 위해 데스크탑 폴더에 접근합니다.";
+"NSDocumentsFolderUsageDescription" = "Hexa는 요청한 뒤에만 정리기 및 제거기의 캐시와 남은 파일을 검사하기 위해 문서 폴더에 접근합니다.";
+"NSDownloadsFolderUsageDescription" = "Hexa는 요청한 뒤에만 정리기 및 제거기의 캐시와 남은 파일을 검사하기 위해 다운로드 폴더에 접근합니다.";

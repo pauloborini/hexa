@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Hexa (Rápido - Swift Build)",
+      "program": "${workspaceFolder}/.build/out/Products/Debug/Hexa",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "swift-build-debug"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Hexa (App Bundle - build.sh)",
+      "program": "${workspaceFolder}/build/hexa.app/Contents/MacOS/Hexa",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build-app"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Hexa (Probe Notch Presentation)",
+      "program": "${workspaceFolder}/build/hexa-probe.app/Contents/MacOS/Hexa",
+      "args": ["--notch-presentation-test"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build-probe"
+    }
+  ]
+}

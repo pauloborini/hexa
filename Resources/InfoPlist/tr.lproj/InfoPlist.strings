@@ -1,0 +1,11 @@
+"NSBluetoothAlwaysUsageDescription" = "Hexa, Bluetooth’u yalnızca siz istedikten sonra, bağlı aksesuarlarınızın pil düzeyini Monitör > Güç bölümünde ve Dynamic Island’da okumak için kullanır.";
+
+"NSMicrophoneUsageDescription" = "Hexa mikrofondan asla kayıt yapmaz. Mikser veya Dynamic Island ekolayzırı diğer uygulamaların sesini okurken macOS bu erişimi isteyebilir.";
+
+"NSAudioCaptureUsageDescription" = "Hexa, Dynamic Island ekolayzırı için geçerli oynatıcının ve miksaj için seçtiğiniz uygulamaların sesini yakalar.";
+"NSCalendarsFullAccessUsageDescription" = "Hexa, ajandanızı ve geri sayımları Dynamic Island’da göstermek için takvim etkinliklerinizi okur.";
+"NSAppleEventsUsageDescription" = "Hexa diğer uygulamalara yalnızca buna ihtiyaç duyan bir özelliği kullandığınızda komut gönderir: oynatma denetimleri için geçerli müzik oynatıcıya, korunan öğeleri Çöp Sepeti’ne taşımak için Finder’a ve parolanızı isteyen Homebrew komutlarını çalıştırmak için Terminal’e.";
+"NSScreenCaptureUsageDescription" = "Hexa, ekran görüntüsü ve OCR araçları için ekran içeriğini ve pencere başlıklarını yalnızca siz istedikten sonra yakalar.";
+"NSDesktopFolderUsageDescription" = "Hexa, Temizleyici ve Kaldırıcı önbelleklerini ve artıklarını taramak için Masaüstü klasörünüze yalnızca siz istedikten sonra erişir.";
+"NSDocumentsFolderUsageDescription" = "Hexa, Temizleyici ve Kaldırıcı önbelleklerini ve artıklarını taramak için Belgeler klasörünüze yalnızca siz istedikten sonra erişir.";
+"NSDownloadsFolderUsageDescription" = "Hexa, Temizleyici ve Kaldırıcı önbelleklerini ve artıklarını taramak için İndirilenler klasörünüze yalnızca siz istedikten sonra erişir.";

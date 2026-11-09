@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="1024" height="1024">
+  <!-- hexa app icon: Conceito A "Segmento aberto" (spec §1.1) sobre fundo escuro opaco; máscara externa aplicada pelo macOS -->
+  <g>
+    <rect x="0" y="0" width="48" height="48" fill="#17140F"/>
+    <g fill="none" stroke="#F6F4EE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="36.99" y1="18.50" x2="36.99" y2="29.49"/>
+    <line x1="35.26" y1="32.50" x2="25.74" y2="37.99"/>
+    <line x1="22.27" y1="38.00" x2="12.75" y2="32.50"/>
+    <line x1="11.01" y1="29.50" x2="11.01" y2="18.51"/>
+    <line x1="12.74" y1="15.50" x2="22.26" y2="10.01"/>
+      <line x1="29.14" y1="9.08" x2="34.34" y2="12.08" stroke="#CFA955"/>
+      <circle cx="24" cy="24" r="2.2" fill="#CFA955" stroke="none"/>
+    </g>
+  </g>
+</svg>

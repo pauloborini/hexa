@@ -1,0 +1,23 @@
+# Planejamento local, fora do git por decisão do projeto
+.app-work/
+
+# Checkpoint efêmero do kit Hephaestus
+.hephaestus/
+
+# macOS
+.DS_Store
+
+# Builds
+.build/
+build/
+DerivedData/
+xcuserdata/
+*.xcresult
+.commandcode/
+
+# Credenciais e chaves locais
+.env*
+!.env.example
+key.properties
+*.jks
+*.keystore

@@ -1,0 +1,11 @@
+"NSBluetoothAlwaysUsageDescription" = "Hexa utilise le Bluetooth pour lire la batterie de vos accessoires connectés dans Moniteur > Énergie et dans la Dynamic Island, uniquement après votre demande.";
+
+"NSMicrophoneUsageDescription" = "Hexa n’enregistre jamais avec le microphone. macOS peut demander cet accès quand le mixeur ou l’égaliseur de Dynamic Island lit le son d’autres apps.";
+
+"NSAudioCaptureUsageDescription" = "Hexa capture le son du lecteur actuel pour l’égaliseur de Dynamic Island et des apps que vous choisissez pour le mixage.";
+"NSCalendarsFullAccessUsageDescription" = "Hexa lit les événements de votre calendrier pour afficher votre agenda et des comptes à rebours dans Dynamic Island.";
+"NSAppleEventsUsageDescription" = "Hexa envoie des commandes à d’autres apps uniquement quand vous utilisez une fonction qui en a besoin : au lecteur de musique actuel pour les commandes de lecture, au Finder pour placer des éléments protégés dans la Corbeille et à Terminal pour exécuter les commandes Homebrew qui demandent votre mot de passe.";
+"NSScreenCaptureUsageDescription" = "Hexa capture le contenu de l’écran et les titres de fenêtres pour les outils de capture et d’OCR, uniquement après votre demande.";
+"NSDesktopFolderUsageDescription" = "Hexa accède à votre dossier Bureau pour rechercher les caches et résidus du Nettoyeur et du Désinstalleur, uniquement après votre demande.";
+"NSDocumentsFolderUsageDescription" = "Hexa accède à votre dossier Documents pour rechercher les caches et résidus du Nettoyeur et du Désinstalleur, uniquement après votre demande.";
+"NSDownloadsFolderUsageDescription" = "Hexa accède à votre dossier Téléchargements pour rechercher les caches et résidus du Nettoyeur et du Désinstalleur, uniquement après votre demande.";

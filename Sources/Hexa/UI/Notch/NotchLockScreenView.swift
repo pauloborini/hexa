@@ -1,0 +1,334 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+// Copyright (C) 2026 Paulo Borini
+
+import AppKit
+import SwiftUI
+
+/// What the lock screen may show, settled when it appears: preferences cannot
+/// change while the Mac is locked, so the views never read them again.
+final class NotchLockScreenModel: ObservableObject {
+    struct Gates: Equatable {
+        var music = false
+        var timer = false
+        var downloads = false
+        var countdown = false
+        var timeLeft = false
+    }
+
+    @Published var gates = Gates()
+    /// Kept for the whole time the Mac stays locked, across the display
+    /// sleeping and waking, and cleared once it unlocks.
+    @Published var playedWhileLocked = false
+    @Published var padlockOpen = false
+
+    func showsMusic(_ playback: NotchPlayback?) -> Bool {
+        gates.music && playback.map {
+            NotchLockScreenSupport.showsMusic(isPlaying: $0.isPlaying, playedWhileLocked: playedWhileLocked)
+        } == true
+    }
+}
+
+/// The island at rest with a padlock beside the camera, and the music's bars
+/// on the other side while a song plays. The padlock closes as the Mac locks
+/// and opens as it unlocks, before the island returns underneath.
+struct NotchLockScreenIsland: View {
+    @ObservedObject var model: NotchLockScreenModel
+    let size: CGSize
+    let cameraWidth: CGFloat
+    /// The music strip's own geometry: the padlock takes the cover's place and
+    /// the bars keep theirs, so locking changes what shows, not where.
+    let geometry: NotchGeometry
+    /// The window on whole points around the island, and the island's top
+    /// left corner inside it; the rest of the window stays clear.
+    var window: CGSize? = nil
+    var origin: CGPoint = .zero
+    @ObservedObject private var music = NotchMusicService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let wing = max(0, (size.width - cameraWidth) / 2)
+        let padlockSide = min(geometry.compactMusicArtworkSide, wing)
+        let playing = model.showsMusic(music.playback) && music.playback?.isPlaying == true
+        NotchShape(attached: true, radius: NotchLayout.surfaceRadius(height: size.height))
+            .fill(.black)
+            .overlay {
+                HStack(spacing: 0) {
+                    HexaIcons.image(model.padlockOpen ? "lock.open.fill" : "lock.fill", size: min(13, size.height * 0.42))
+                        .font(.hexaManrope(size: min(13, size.height * 0.42), weight: .semibold))
+                        .foregroundStyle(HexaTheme.fgPrimary)
+                        .contentTransition(.opacity)
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.padlockOpen)
+                        .frame(width: padlockSide, height: padlockSide)
+                        .padding(.leading, max(0, min(geometry.compactMusicArtworkInset, wing - padlockSide)))
+                        .frame(width: wing, height: size.height, alignment: .leading)
+                    Spacer(minLength: 0)
+                    NotchEqualizerBars(isPlaying: playing, bars: NotchLayout.compactMusicBarCount,
+                                       barWidth: NotchLayout.compactMusicBarWidth, height: geometry.compactMusicBarHeight,
+                                       tint: music.artworkTint?.color ?? HexaTheme.fgPrimary)
+                        .opacity(playing ? 1 : 0)
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: playing)
+                        .padding(.trailing, max(0, min(geometry.compactMusicBarsInset, wing - NotchLayout.compactMusicBarsWidth)))
+                        .frame(width: wing, height: size.height, alignment: .trailing)
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .padding(.leading, origin.x)
+            .padding(.top, origin.y)
+            .frame(width: window?.width ?? size.width, height: window?.height ?? size.height, alignment: .topLeading)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The song in the middle of the lock screen, on one pane of Liquid Glass:
+/// the cover, its title, a timeline that seeks and the player's own buttons.
+/// A smaller display takes a smaller cover, then lays it beside the title.
+struct NotchLockScreenPlayer: View {
+    @ObservedObject var model: NotchLockScreenModel
+    let size: CGSize
+    @ObservedObject private var music = NotchMusicService.shared
+    @ObservedObject private var l10n = L10n.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// What a tap on play or pause asked for, shown at once as the island's
+    /// own player shows it, until the player says so.
+    @State private var requestedPlaying: Bool?
+    private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
+    private var accent: Color { music.artworkTint?.color ?? HexaTheme.fgPrimary }
+
+    var body: some View {
+        let shown = model.showsMusic(music.playback)
+        ZStack {
+            if shown, let playback = music.playback {
+                ViewThatFits(in: .vertical) {
+                    player(playback, artwork: 112)
+                    player(playback, artwork: 84)
+                    compact(playback)
+                }
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.5), value: shown)
+        // A second tap before the player answers asks for the state after it,
+        // so only the player reaching what was asked ends the early word.
+        .onChange(of: music.playback?.isPlaying) {
+            if music.playback?.isPlaying == requestedPlaying { requestedPlaying = nil }
+        }
+        .onChange(of: music.playback?.track) { requestedPlaying = nil }
+        // A player that never answers leaves the button as it was.
+        .task(id: requestedPlaying) {
+            guard requestedPlaying != nil else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if !Task.isCancelled { requestedPlaying = nil }
+        }
+    }
+
+    private func player(_ playback: NotchPlayback, artwork: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            cover(size: artwork, playback: playback)
+                .padding(.bottom, 14)
+            Text(playback.track.title ?? text.mediaNowPlaying)
+                .font(.hexa(.display(18)))
+                .lineLimit(1)
+            if let artist = playback.track.artist ?? playback.track.album {
+                Text(artist)
+                    .font(.hexa(.heading))
+                    .foregroundStyle(HexaTheme.fgPrimary.opacity(0.72))
+                    .lineLimit(1)
+                    .padding(.top, 2)
+            }
+            NotchMusicTimeline(playback: playback, service: music, tint: accent)
+                .padding(.top, 16)
+            transport(playback)
+        }
+        .pane()
+    }
+
+    /// A short display lays the cover beside the title, as the island's own
+    /// player does.
+    private func compact(_ playback: NotchPlayback) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                cover(size: 52, playback: playback)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(playback.track.title ?? text.mediaNowPlaying)
+                        .font(.hexa(.heading))
+                    if let artist = playback.track.artist ?? playback.track.album {
+                        Text(artist).font(.hexa(.body)).foregroundStyle(HexaTheme.fgPrimary.opacity(0.72))
+                    }
+                }
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            NotchMusicTimeline(playback: playback, service: music, tint: accent)
+                .padding(.top, 12)
+            transport(playback)
+        }
+        .pane()
+    }
+
+    private func cover(size: CGFloat, playback: NotchPlayback) -> some View {
+        NotchArtwork(image: music.artwork, size: size)
+            .shadow(color: (music.artworkTint?.color ?? .black).opacity(0.5), radius: size * 0.28, y: size * 0.1)
+            .scaleEffect(playback.isPlaying || reduceMotion ? 1 : 0.92)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: playback.isPlaying)
+    }
+
+    /// The player's own buttons, never a permission prompt: a request made
+    /// here would open behind the lock screen, where no one can answer it.
+    private func transport(_ playback: NotchPlayback) -> some View {
+        HStack(spacing: 46) {
+            if !music.lacksTrackSkipping(.previous) {
+                button("backward.fill", size: 22, title: text.mediaPrevious, command: .previous, playback: playback)
+            }
+            button((requestedPlaying ?? playback.isPlaying) ? "pause.fill" : "play.fill", size: 30,
+                   title: text.mediaPlayPause, command: .toggle, playback: playback)
+            if !music.lacksTrackSkipping(.next) {
+                button("forward.fill", size: 22, title: text.mediaNext, command: .next, playback: playback)
+            }
+        }
+        .frame(height: 46)
+    }
+
+    private func button(_ symbol: String, size: CGFloat, title: String, command: NotchMusicService.Command,
+                        playback: NotchPlayback) -> some View {
+        Button {
+            let playing = requestedPlaying ?? playback.isPlaying
+            // Only a player the island writes to directly answers fast enough
+            // to show its word early. A slower path waits for the player.
+            if music.send(command, context: playback.commandContext), command == .toggle,
+               playback.canSendCommandsDirectly { requestedPlaying = !playing }
+        } label: {
+            HexaIcons.image(symbol, size: size)
+                .font(.hexaManrope(size: size, weight: .semibold))
+                .foregroundStyle(HexaTheme.fgPrimary)
+                .contentTransition(.opacity)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: symbol)
+                .frame(width: 48, height: 44)
+                .contentShape(RoundedRectangle(cornerRadius: HexaTheme.Radius.notch))
+        }
+        .buttonStyle(NotchButtonStyle(cornerRadius: HexaTheme.Radius.notch))
+        .disabled(!music.canPerform(command))
+        .accessibilityLabel(title)
+    }
+}
+
+private extension View {
+    /// The player's pane, as wide as the timeline needs and no wider.
+    func pane() -> some View {
+        foregroundStyle(HexaTheme.fgPrimary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 20)
+            .frame(width: NotchLockScreenLayout.paneWidth)
+            .background { HUDBackdrop(cornerRadius: 34, contrast: .high) }
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The activities as one line under the clock, where a phone keeps the
+/// widgets of its lock screen: a mark and a reading each, with no card. A
+/// line too long for the display gives up its last activities first.
+struct NotchLockScreenActivities: View {
+    @ObservedObject var model: NotchLockScreenModel
+    let size: CGSize
+    @ObservedObject private var timer = NotchTimerService.shared
+    @ObservedObject private var downloads = NotchDownloadService.shared
+    @ObservedObject private var calendar = NotchCalendarService.shared
+    @ObservedObject private var l10n = L10n.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let items = available(at: context.date)
+            ViewThatFits(in: .horizontal) {
+                line(items, at: context.date)
+                line(Array(items.prefix(3)), at: context.date)
+                line(Array(items.prefix(2)), at: context.date)
+                line(Array(items.prefix(1)), at: context.date)
+            }
+            .frame(width: size.width, height: size.height)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: items)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func available(at date: Date) -> [NotchLockScreenActivity] {
+        let gates = model.gates
+        return NotchLockScreenSupport.activities(
+            timer: gates.timer && timer.session.hasSession,
+            calendar: calendar.countdown.map {
+                ($0.ongoing ? gates.timeLeft : gates.countdown || calendar.isChosen($0.event)) && $0.isShown(at: date)
+            } == true,
+            downloads: gates.downloads && downloads.items.contains { $0.active && !$0.completed })
+    }
+
+    private func line(_ items: [NotchLockScreenActivity], at date: Date) -> some View {
+        HStack(spacing: 26) {
+            ForEach(items) { item in
+                entry(item, at: date)
+                    .transition(.opacity)
+            }
+        }
+        .font(.hexa(.data))
+        .monospacedDigit()
+        .foregroundStyle(HexaTheme.fgPrimary.opacity(0.92))
+        .lineLimit(1)
+        .fixedSize()
+        .legibleOnWallpaper()
+    }
+
+    @ViewBuilder private func entry(_ item: NotchLockScreenActivity, at date: Date) -> some View {
+        switch item {
+        case .timer:
+            let session = timer.session
+            let now = timer.now
+            let finished = NotchLockScreenSupport.timerFinished(session, at: now)
+            let text = FeatureStrings.notchActivities(l10n.language)
+            let clock = finished ? text.finished : NotchTimerSupport.clockText(for: session, at: now)
+            HStack(spacing: 7) {
+                HexaIcons.image(finished ? "checkmark.circle.fill" : session.isPaused ? "pause.circle.fill"
+                      : session.countsUp ? "stopwatch.fill" : "timer")
+                    .foregroundStyle(HexaTheme.statusWarning)
+                Text(session.mode == .pomodoro && !finished ? text.phase(session.phase) + " " + clock : clock)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(text.phase(session.phase))
+            .accessibilityValue(clock)
+        case .calendar:
+            if let countdown = calendar.countdown {
+                let text = FeatureStrings.notchCalendar(l10n.language)
+                HStack(spacing: 7) {
+                    HexaIcons.image("calendar").foregroundStyle(countdown.event.color.color)
+                    Text(NotchCalendarStrip.displayTitle(countdown.event, untitled: text.untitled))
+                        .frame(maxWidth: 240, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(NotchCalendarSupport.countdownText(until: countdown.target, now: date))
+                        .foregroundStyle(HexaTheme.fgPrimary.opacity(0.7))
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(countdown.ongoing ? text.ongoing : text.next)
+            }
+        case .downloads:
+            // Progress without the file's name, which stays off the lock screen.
+            let fraction = downloads.items.first(where: { $0.active && !$0.completed })?.fraction
+            HStack(spacing: 7) {
+                HexaIcons.image("arrow.down.circle.fill").foregroundStyle(HexaTheme.fgSecondary)
+                if let fraction {
+                    Text(fraction, format: .percent.precision(.fractionLength(0)))
+                } else {
+                    Text(FeatureStrings.notchFiles(l10n.language).inProgress)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+private extension View {
+    /// White type over any wallpaper, the way the lock screen's own clock
+    /// stays readable over a bright photo.
+    func legibleOnWallpaper() -> some View {
+        shadow(color: .black.opacity(0.3), radius: 8, y: 1)
+    }
+}

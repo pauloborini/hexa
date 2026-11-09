@@ -1,0 +1,713 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+// Copyright (C) 2026 Paulo Borini
+
+import AppKit
+import SwiftUI
+
+/// Feedback is local to a visible control. No recurring work is needed.
+/// The pointer lifts a control slightly and a press settles it back, which is
+/// what makes the panel feel physical rather than painted on.
+struct NotchButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = HexaTheme.Radius.control
+    var lifts = true
+    /// A light wash under the pointer.
+    var highlights = true
+    @State private var hovered = false
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.isFocused) private var focused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let active = enabled && hovered
+        configuration.label
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(active && highlights ? HexaTheme.selectionBg : .clear)
+                    .allowsHitTesting(false)
+            }
+            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
+            .scaleEffect(reduceMotion || !lifts ? 1
+                         : configuration.isPressed ? 0.965 : (active ? 1.022 : 1))
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.7),
+                       value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.75), value: hovered)
+            .onHover { hovered = $0 }
+            .overlay {
+                if focused && enabled {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(HexaTheme.focusRing, lineWidth: 2)
+                        .padding(1)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+extension NotchArtworkTint {
+    var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
+}
+
+/// The bars with the live levels attached. Only this small view observes the
+/// audio service, so its thirty updates a second never re-render the island.
+struct NotchLiveEqualizerBars: View {
+    var isPlaying = true
+    var bars = 4
+    var barWidth: CGFloat = 2.5
+    var height: CGFloat = 14
+    var tint: Color = HexaTheme.fgPrimary
+    @ObservedObject private var audio = NotchAudioLevelService.shared
+    @Environment(\.notchSettingsPreview) private var preview
+
+    var body: some View {
+        NotchEqualizerBars(isPlaying: isPlaying, bars: bars, barWidth: barWidth, height: height, tint: tint,
+                           live: audio.levels)
+            .onAppear { if !preview { audio.barsAppeared() } }
+            .onDisappear { if !preview { audio.barsDisappeared() } }
+    }
+}
+
+/// A level readout in the same language as the notch's sliders, instead of the
+/// thin system bar, so every meter in the panel matches.
+struct NotchMeter: View {
+    let value: Double
+    var height: CGFloat = 5
+    var tint: Color = HexaTheme.fgPrimary
+
+    var body: some View {
+        let fraction = value.isFinite ? min(1, max(0, value)) : 0
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous).fill(HexaTheme.borderHairline)
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(0.9))
+                    .frame(width: max(fraction > 0 ? height : 0, proxy.size.width * fraction))
+            }
+        }
+        .frame(height: height)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A clock's digits roll into the next reading, downward while it counts
+/// down and upward while it counts up; Reduce Motion changes them in place.
+struct NotchRollingDigits: ViewModifier {
+    let value: String
+    let countsDown: Bool
+    /// Off in the closed island, where only the part above the seconds rolls.
+    var everySecond = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .contentTransition(.numericText(countsDown: countsDown))
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3),
+                       value: NotchTimerSupport.rollingValue(value, everySecond: everySecond))
+    }
+}
+
+/// Draws a strip from what its activity reported while it was on the island.
+/// An activity that ends says so before the island swaps its strip out, and
+/// the strip on its way out drew the empty reading for those frames and
+/// through the fade into what comes next.
+struct NotchStripHold<Value: Equatable, Content: View>: View {
+    private let value: Value
+    private let shows: Bool
+    private let content: (Value) -> Content
+    @State private var held: Value
+
+    /// `shows` is whether the activity is still on the island.
+    init(_ value: Value, shows: Bool, @ViewBuilder content: @escaping (Value) -> Content) {
+        self.value = value
+        self.shows = shows
+        self.content = content
+        _held = State(initialValue: value)
+    }
+
+    var body: some View {
+        content(shows ? value : held)
+            .onChange(of: value) { _, value in
+                if shows { held = value }
+            }
+    }
+}
+
+struct NotchIconButton: View {
+    let symbol: String
+    let title: String
+    var selected = false
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HexaIcons.image(symbol, size: 13)
+                .font(.hexa(.body))
+                .foregroundStyle(selected ? HexaTheme.fgPrimary : HexaTheme.fgSecondary)
+                .contentTransition(.opacity)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: symbol)
+                .frame(width: 28, height: 28)
+                .background(selected ? HexaTheme.selectionBg : .clear,
+                            in: RoundedRectangle(cornerRadius: HexaTheme.Radius.control, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: HexaTheme.Radius.control, style: .continuous))
+        }
+        .buttonStyle(NotchButtonStyle(cornerRadius: HexaTheme.Radius.control))
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+struct NotchGlyphBadge: View {
+    let symbol: String
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: HexaTheme.Radius.notch, style: .continuous)
+                .fill(HexaTheme.surfaceInset)
+                .frame(width: 56, height: 56)
+            HexaIcons.image(symbol, size: 26)
+                .foregroundStyle(HexaTheme.fgSecondary)
+        }
+    }
+}
+
+/// A short island puts the glyph beside its message; taller ones stack them.
+/// Actions, when a page has a next step to offer, follow the message.
+struct NotchEmptyView<Actions: View>: View {
+    let symbol: String
+    let message: String
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            VStack(spacing: 12) {
+                glyph
+                label.multilineTextAlignment(.center).frame(maxWidth: 250)
+                actions()
+            }
+            HStack(spacing: 14) {
+                glyph
+                VStack(alignment: .leading, spacing: 10) {
+                    label.frame(maxWidth: 260, alignment: .leading)
+                    actions()
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var glyph: some View {
+        NotchGlyphBadge(symbol: symbol)
+            .accessibilityHidden(true)
+    }
+
+    private var label: some View {
+        Text(message)
+            .font(.hexaManrope(size: 12))
+            .foregroundStyle(HexaTheme.fgSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+extension NotchEmptyView where Actions == EmptyView {
+    init(symbol: String, message: String) {
+        self.init(symbol: symbol, message: message) { EmptyView() }
+    }
+}
+
+/// An empty page's next step, as a word on a pill. The step the page leads
+/// to is filled, and any other stays plain beside it.
+struct NotchPillButton: View {
+    let title: String
+    var prominent = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.hexa(.body))
+                .foregroundStyle(prominent ? HexaTheme.fgPrimary : HexaTheme.fgSecondary)
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(height: 28)
+                .background(HexaTheme.fgPrimary.opacity(prominent ? 0.14 : 0), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(NotchButtonStyle(cornerRadius: 14))
+    }
+}
+
+struct NotchArtwork: View {
+    let image: NSImage?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                Color.black.overlay {
+                    HexaIcons.image("music.note", size: size * 0.3)
+                        .font(.hexaManrope(size: size * 0.3))
+                        .foregroundStyle(HexaTheme.fgPrimary.opacity(0.45))
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.19, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: size * 0.19, style: .continuous)
+                .strokeBorder(HexaTheme.borderHairline, lineWidth: 0.5)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Items fill each column top to bottom and continue sideways, so a short
+/// island scrolls to the side and never down. Whenever everything fits
+/// without scrolling, the items read left to right instead, in rows of equal
+/// cells across the full width, and a short last row sits centered.
+struct NotchRail<Item: Identifiable, Content: View>: View {
+    let items: [Item]
+    let rows: Int
+    let itemWidth: CGFloat
+    let width: CGFloat
+    var spacing: CGFloat = 8
+    var rowSpacing: CGFloat = 8
+    var scrollTarget: Item.ID? = nil
+    @ViewBuilder let content: (Item) -> Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var columns: Int { NotchLayout.railColumns(count: items.count, rows: rows) }
+    private var starts: [Int] { Array(stride(from: 0, to: items.count, by: max(1, rows))) }
+    private var rowStarts: [Int] { Array(stride(from: 0, to: items.count, by: max(1, columns))) }
+    private var fits: Bool {
+        NotchLayout.railFits(columns: columns, itemWidth: itemWidth, spacing: spacing, width: width)
+    }
+
+    // Scroll to the column itself: its identity is known before lazy children
+    // are created, including a target well outside the current viewport.
+    private var targetColumn: Int? {
+        guard let scrollTarget, let index = items.firstIndex(where: { $0.id == scrollTarget }) else { return nil }
+        return index / max(1, rows) * max(1, rows)
+    }
+
+    var body: some View {
+        if fits {
+            let cell = (width - CGFloat(max(0, columns - 1)) * spacing) / CGFloat(max(1, columns))
+            VStack(spacing: rowSpacing) {
+                ForEach(rowStarts, id: \.self) { start in row(start, cell: cell) }
+            }
+        } else {
+            ScrollViewReader { proxy in
+                // Legacy scroll bars would take a row's worth of height; the
+                // column cut at the edge is the cue that more follows.
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: spacing) {
+                        ForEach(starts, id: \.self) { start in column(start).frame(width: itemWidth).id(start) }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .scrollIndicators(.never)
+                .notchScrollEdgeFade(.horizontal)
+                .onAppear {
+                    if let targetColumn { proxy.scrollTo(targetColumn, anchor: .center) }
+                }
+                .onChange(of: targetColumn) { _, target in
+                    guard let target else { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+                        proxy.scrollTo(target, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private func row(_ start: Int, cell: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: spacing) {
+            ForEach(items[start..<min(items.count, start + max(1, columns))]) { item in
+                content(item).frame(width: cell)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func column(_ start: Int) -> some View {
+        VStack(spacing: rowSpacing) {
+            ForEach(items[start..<min(items.count, start + max(1, rows))]) { item in
+                content(item)
+            }
+        }
+    }
+}
+
+private struct NotchGlassSurfaceKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var notchGlassSurface: Bool {
+        get { self[NotchGlassSurfaceKey.self] }
+        set { self[NotchGlassSurfaceKey.self] = newValue }
+    }
+
+    /// A page drawn in Settings to preview the island. It shows what the
+    /// island shows but must leave the island's state and the keyboard alone.
+    var notchSettingsPreview: Bool {
+        get { self[NotchSettingsPreviewKey.self] }
+        set { self[NotchSettingsPreviewKey.self] = newValue }
+    }
+}
+
+private struct NotchSettingsPreviewKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+/// The native host publishes the same path used by its animated mask. Keeping
+/// this in canvas coordinates avoids scaling the glass's corners independently.
+final class NotchBackdropPresentation: ObservableObject {
+    @Published var contour = Path()
+    @Published var usesGlass = false
+    /// The camera strip's height in points, which the translucent background
+    /// keeps black at every island height.
+    @Published var stripHeight: CGFloat = 0
+    @Published private(set) var fade = NotchGlassFade.open
+    /// The menu bar a floating capsule leaves below itself, part of the
+    /// surface height a fade is planned in.
+    var floatingGap: CGFloat = 0
+
+    /// Measured from the top edge, as the fade is planned: a floating
+    /// capsule's contour starts below it and ends above the surface's bottom.
+    var openness: Double { Double(fade.openness(atHeight: contourBottom + floatingGap)) }
+    fileprivate var contourBottom: CGFloat { contour.boundingRect.isNull ? 0 : contour.boundingRect.maxY }
+
+    /// How much of the resting black still lies beneath the glass. It lets go
+    /// as the glass opens and is gone once the glass is fully open, so an
+    /// opening never settles over a black that then vanishes at once.
+    var restingBlack: Double { 1 - openness }
+
+    /// Plans a resize from `start` to `end` from what is on screen now.
+    func planFade(from start: CGFloat, to end: CGFloat, endsInGlass: Bool) {
+        setFade(.plan(from: start, to: end, endsInGlass: endsInGlass,
+                      current: usesGlass ? fade.openness(atHeight: start) : 0))
+    }
+
+    func openFully() { setFade(.open) }
+
+    /// The fade follows the moving contour frame by frame; SwiftUI must not
+    /// add an animation of its own on top.
+    private func setFade(_ next: NotchGlassFade) {
+        guard fade != next else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { fade = next }
+    }
+}
+
+struct NotchBackdropShape: Shape {
+    var contour: Path
+    func path(in rect: CGRect) -> Path { contour }
+}
+
+struct NotchWindowBackground: View {
+    @ObservedObject var presentation: NotchBackdropPresentation
+    @AppStorage(DefaultsKey.notchTranslucentBackground) private var translucent = false
+
+    var body: some View {
+        NotchSurfaceBackground(presentation: presentation, translucent: translucent)
+    }
+}
+
+/// Keep the upper content dark and open the lower surface into a translucent lip.
+struct NotchSurfaceBackground: View {
+    @ObservedObject var presentation: NotchBackdropPresentation
+    var translucent = false
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var showsTranslucent: Bool {
+        translucent && presentation.usesGlass && !reduceTransparency
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(showsTranslucent ? presentation.restingBlack : 1)
+            if showsTranslucent, presentation.restingBlack < 1 {
+                translucentOrBlack
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+extension NotchSurfaceBackground {
+    /// The system's behind-window blur while the island is open, black over
+    /// the camera strip so every open state meets the housing as the resting
+    /// island does. Reduce Transparency keeps it black.
+    @ViewBuilder var translucentOrBlack: some View {
+        if translucent, presentation.usesGlass, !reduceTransparency {
+            let shape = NotchBackdropShape(contour: presentation.contour)
+            let height = presentation.contourBottom
+            let stops = NotchTranslucentTint.stops(height: height, stripHeight: presentation.stripHeight,
+                                                   openness: presentation.openness,
+                                                   increasedContrast: contrast == .increased)
+                .map { Gradient.Stop(color: .black.opacity($0.opacity), location: $0.location) }
+            // The blur covers only the island's box. Its mask image is drawn
+            // again on every frame of a resize, and at the stage's size it
+            // would be as large as the largest display.
+            let box = presentation.contour.boundingRect.integral
+            ZStack(alignment: .topLeading) {
+                if !box.isNull, box.width > 0, box.height > 0 {
+                    NotchTranslucentMaterial(contour: presentation.contour.offsetBy(dx: -box.minX, dy: -box.minY).cgPath)
+                        .frame(width: box.width, height: box.height)
+                        .padding(EdgeInsets(top: box.minY, leading: box.minX, bottom: 0, trailing: 0))
+                }
+                LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
+                    .frame(height: height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .mask(shape)
+            }
+        } else {
+            Color.black
+        }
+    }
+}
+
+/// `NSVisualEffectView` blurs behind the window only inside its mask image,
+/// so the mask follows the island's contour as it animates.
+private struct NotchTranslucentMaterial: NSViewRepresentable {
+    let contour: CGPath
+
+    func makeNSView(context: Context) -> NotchTranslucentView {
+        let view = NotchTranslucentView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.appearance = NSAppearance(named: .darkAqua)
+        return view
+    }
+
+    func updateNSView(_ view: NotchTranslucentView, context: Context) {
+        view.contour = contour
+    }
+}
+
+private final class NotchTranslucentView: NSVisualEffectView {
+    var contour: CGPath? {
+        didSet { if contour != oldValue { updateMask() } }
+    }
+
+    override var isFlipped: Bool { true }
+
+    /// The view follows the island's box, so each new size gets its mask at
+    /// once. Without one the whole view would blur.
+    override func setFrameSize(_ newSize: NSSize) {
+        let resized = newSize != frame.size
+        super.setFrameSize(newSize)
+        if resized { updateMask() }
+    }
+
+    private func updateMask() {
+        guard let contour, bounds.width > 0, bounds.height > 0 else {
+            maskImage = nil
+            return
+        }
+        maskImage = NSImage(size: bounds.size, flipped: true) { _ in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.addPath(contour)
+            context.setFillColor(.black)
+            context.fillPath()
+            return true
+        }
+    }
+}
+
+/// Controls on the glass shell use quiet translucent fills, leaving the
+/// refraction to the island rather than stacking separate glass lenses.
+struct NotchControlSurface: ViewModifier {
+    var cornerRadius: CGFloat = HexaTheme.Radius.panel
+    var selected = false
+    var interactive = true
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        content
+            .background(selected ? HexaTheme.selectionBg : HexaTheme.surfaceRaised, in: shape)
+            .overlay {
+                shape.strokeBorder(contrast == .increased ? HexaTheme.accentSolid : HexaTheme.borderHairline,
+                                   lineWidth: HexaTheme.hairline)
+                    .allowsHitTesting(false)
+            }
+    }
+
+}
+
+/// One entry of a native menu popped up from a SwiftUI control.
+struct NotchMenuItem {
+    let title: String
+    var checked = false
+    var symbol: String? = nil
+    var enabled = true
+    var action: () -> Void = {}
+
+    /// A line between groups of entries.
+    static let separator = NotchMenuItem(title: "")
+    var isSeparator: Bool { title.isEmpty }
+}
+
+/// A control SwiftUI draws in full that pops up a native menu. `Menu`
+/// cannot do this: its borderless style turns the label into a pop-up
+/// button title, one line cut with an ellipsis, images moved to the front
+/// and frames ignored, so anything but a lone glyph loses its shape.
+struct NotchMenuButton<Label: View>: View {
+    let title: String
+    let items: [NotchMenuItem]
+    var cornerRadius: CGFloat = 6
+    @ViewBuilder let label: () -> Label
+    @State private var anchor = NotchMenuAnchor()
+
+    var body: some View {
+        Button { anchor.popUp(items) } label: { label() }
+            .buttonStyle(NotchButtonStyle(cornerRadius: cornerRadius, lifts: false))
+            .background(NotchMenuAnchorView(anchor: anchor))
+            .accessibilityLabel(title)
+    }
+}
+
+/// A chooser whose current choice reads in full: up to two centred lines, or
+/// one line cut in the middle, with the list as a native menu below it.
+struct NotchDeviceMenu: View {
+    let title: String
+    let current: String
+    var width: CGFloat = 100
+    var lines = 2
+    var alignment: TextAlignment = .center
+    let items: [NotchMenuItem]
+
+    var body: some View {
+        NotchMenuButton(title: title, items: items) {
+            HStack(spacing: HexaTheme.Spacing.xs) {
+                Text(current)
+                HexaIcons.image("chevron.down", size: HexaIconMetrics.small)
+            }
+                .font(.hexa(.label))
+                .lineLimit(lines)
+                .multilineTextAlignment(alignment)
+                .truncationMode(lines > 1 ? .tail : .middle)
+                .foregroundStyle(HexaTheme.fgSecondary)
+                .frame(maxWidth: width, alignment: frameAlignment)
+                .padding(.horizontal, 4)
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .help(current)
+        .accessibilityValue(current)
+    }
+
+    private var frameAlignment: Alignment {
+        switch alignment {
+        case .leading: return .leading
+        case .center: return .center
+        case .trailing: return .trailing
+        }
+    }
+}
+
+/// Owns the native menu's targets while it is up and remembers the view it
+/// pops up from. Menu tracking keeps the island open on its own.
+final class NotchMenuAnchor: NSObject {
+    fileprivate weak var view: NSView?
+    private var actions: [() -> Void] = []
+
+    func popUp(_ items: [NotchMenuItem]) {
+        guard let view else { return }
+        actions = items.map(\.action)
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        // The island is dark whatever the system is, so its menus are too.
+        menu.appearance = NSAppearance(named: .darkAqua)
+        for (index, item) in items.enumerated() {
+            guard !item.isSeparator else { menu.addItem(.separator()); continue }
+            let entry = NSMenuItem(title: item.title, action: #selector(choose(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.tag = index
+            entry.state = item.checked ? .on : .off
+            entry.isEnabled = item.enabled
+            if let symbol = item.symbol {
+                entry.image = HexaIcons.nsImage(named: symbol, accessibilityDescription: nil)
+            }
+            menu.addItem(entry)
+        }
+        // A menu whose top lands on the menu bar's edge opens scrolled past its
+        // first entry, so a button against the bar opens it a little below.
+        var location = NSPoint.zero
+        if let window = view.window, let screen = window.screen {
+            let bottom = window.convertPoint(toScreen: view.convert(location, to: nil)).y
+            let edge = screen.visibleFrame.maxY - 3
+            if bottom > edge { location.y -= bottom - edge }
+        }
+        menu.popUp(positioning: nil, at: location, in: view)
+    }
+
+    @objc private func choose(_ sender: NSMenuItem) {
+        guard actions.indices.contains(sender.tag) else { return }
+        actions[sender.tag]()
+    }
+}
+
+private struct NotchMenuAnchorView: NSViewRepresentable {
+    let anchor: NotchMenuAnchor
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        anchor.view = view
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        anchor.view = nsView
+    }
+}
+
+extension NSAlert {
+    /// A SwiftUI alert or confirmation dialog hangs from the island as a
+    /// sheet, which moves and reskins the borderless surface. Inside the
+    /// island a tool asks the same question on its own, just above it, like
+    /// the Scratchpad page does, and the island gets the keyboard back after.
+    static func confirmAboveIsland(_ title: String, message: String, action: String,
+                                   destructive: Bool, cancel: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: action).hasDestructiveAction = destructive
+        // Escape cancels in every language, like the dialog's cancel role.
+        alert.addButton(withTitle: cancel).keyEquivalent = "\u{1b}"
+        return alert.runAboveIsland() == .alertFirstButtonReturn
+    }
+
+    private func runAboveIsland() -> NSApplication.ModalResponse {
+        let island = NotchService.shared.presentationWindow
+        var observers: [NSObjectProtocol] = []
+        if let island {
+            // The modal session puts the alert at the modal panel level, below
+            // the island, and puts it back there when it activates the app or
+            // makes the alert key. Raise it once running and after each of those.
+            let level = NSWindow.Level(rawValue: island.level.rawValue + 1)
+            let alertWindow = window
+            let raise: (Notification) -> Void = { _ in alertWindow.level = level }
+            observers = [NSWindow.didBecomeKeyNotification, NSApplication.didBecomeActiveNotification].map {
+                NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main, using: raise)
+            }
+            DispatchQueue.main.async { alertWindow.level = level }
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let response = runModal()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        // A closed island declines key status, so this only returns to an open one.
+        if let island, island.isVisible { island.makeKey() }
+        return response
+    }
+}

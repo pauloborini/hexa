@@ -1,0 +1,11 @@
+"NSBluetoothAlwaysUsageDescription" = "Hexa používa Bluetooth na čítanie batérie pripojeného príslušenstva v časti Monitor > Napájanie a v Dynamic Island, až keď o to požiadate.";
+
+"NSMicrophoneUsageDescription" = "Hexa nikdy nenahráva z mikrofónu. macOS môže o tento prístup požiadať, keď mixér alebo ekvalizér Dynamic Island čítajú zvuk iných aplikácií.";
+
+"NSAudioCaptureUsageDescription" = "Hexa zachytáva zvuk aktuálneho prehrávača pre ekvalizér Dynamic Island a aplikácií, ktoré vyberiete na mixovanie.";
+"NSCalendarsFullAccessUsageDescription" = "Hexa číta udalosti kalendára, aby zobrazila váš program a odpočítavanie v Dynamic Island.";
+"NSAppleEventsUsageDescription" = "Hexa posiela príkazy iným aplikáciám, len keď používate funkciu, ktorá to potrebuje: aktuálnemu hudobnému prehrávaču pri ovládaní prehrávania, Finderu na presun chránených položiek do Koša a Terminálu na spustenie príkazov Homebrew, ktoré žiadajú vaše heslo.";
+"NSScreenCaptureUsageDescription" = "Hexa zaznamenáva obsah obrazovky a názvy okien pre nástroje snímky obrazovky a OCR, až keď o to požiadate.";
+"NSDesktopFolderUsageDescription" = "Hexa pristupuje k priečinku Plocha na skenovanie vyrovnávacej pamäte a zvyškov z Čističa a Odinštalátora, až keď o to požiadate.";
+"NSDocumentsFolderUsageDescription" = "Hexa pristupuje k priečinku Dokumenty na skenovanie vyrovnávacej pamäte a zvyškov z Čističa a Odinštalátora, až keď o to požiadate.";
+"NSDownloadsFolderUsageDescription" = "Hexa pristupuje k priečinku Stiahnuté na skenovanie vyrovnávacej pamäte a zvyškov z Čističa a Odinštalátora, až keď o to požiadate.";
