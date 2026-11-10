@@ -45,8 +45,9 @@ Local-first, sem conta, sem análise e sem rastreamento.
 
 ### DEC-012 — Auto-update do próprio app
 
-O hexa adota atualizações diretas e manuais via distribuição em imagem de disco (DMG), onde o usuário realiza o download e sobrescreve o aplicativo. O app não realiza auto-update in-app nem busca automatizada de versões beta na interface.
+O Hexa oferece atualização do próprio app pela interface. A busca acontece somente quando o usuário solicita “Verificar atualizações”; se houver uma versão nova, o usuário confirma a instalação. Não há busca em segundo plano, instalação sem confirmação nem busca de versões beta. A distribuição por DMG e a substituição manual continuam disponíveis.
 _Alterado 2026-10-11 — era: auto-update in-app consumindo feed de releases do repositório. Motivo: operador determinou simplificação do fluxo para distribuição direta e manual via DMG pelo usuário._
+_Alterado 2026-11-10 — era: somente distribuição manual por DMG, sem auto-update in-app nem busca automatizada. Motivo: operador aprovou o updater in-app com busca iniciada pelo usuário e confirmação antes de instalar, mantendo o comportamento sob demanda._
 
 ### DEC-013 — Brilho sem XDR e sem dimming de tampa
 
