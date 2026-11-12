@@ -258,6 +258,15 @@ class PublishMainTests(unittest.TestCase):
             self.assertNotIn("--draft=false", call)
             self.assertNotEqual(call[:3], ["gh", "release", "publish"])
 
+    def test_publish_flag_undrafts_when_assets_complete(self):
+        self.run_main(extra=["--publish"])
+        self.assertIsNotNone(self.gh.create_call())
+        self.assertEqual(len(self.gh.upload_calls()), 1)
+        self.assertEqual(
+            self.gh.undraft_calls(),
+            [["gh", "release", "edit", TAG, "--repo", REPO, "--draft=false"]],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -138,6 +138,13 @@ class SparkleKeysTests(unittest.TestCase):
         self.assertFalse(sparkle_keys.inside_repo(self.image))
         self.assertNotIn(self.fake.export_body, stdout)
         self.assertNotIn(self.fake.export_body, self.public_path.read_text() if self.public_path.exists() else "")
+        for path in HERE.iterdir():
+            if not path.is_file() or path.suffix in {".py", ".pyc"}:
+                continue
+            text = path.read_text(errors="ignore")
+            self.assertNotIn("-----BEGIN PRIVATE KEY-----", text, path.name)
+            self.assertNotIn("-----BEGIN OPENSSH PRIVATE KEY-----", text, path.name)
+            self.assertNotIn(self.fake.export_body, text, path.name)
 
         blocker = self.tmp / "blocker-file"
         blocker.write_text("x")
