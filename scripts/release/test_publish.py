@@ -115,15 +115,15 @@ class PublishSequencerTests(unittest.TestCase):
         return [self.sums, self.receipt]
 
     def test_draft_attaches_appcast_after_dmg(self):
-        publish.create_draft(
+        tag = publish.run_draft_sequence(
             self.manifest,
-            self.dmg,
-            self.extras(),
+            self.tmp,
+            self.appcast,
             repo=REPO,
             notes=self.notes,
             run_gh=self.gh,
         )
-        publish.attach_appcast(TAG, self.appcast, repo=REPO, run_gh=self.gh)
+        self.assertEqual(tag, TAG)
         create = self.gh.create_call()
         uploads = self.gh.upload_calls()
         self.assertIsNotNone(create)
