@@ -123,6 +123,49 @@ if [ -f "Resources/now-playing.pl" ]; then
   cp "Resources/now-playing.pl" "$CONTENTS/Resources/now-playing.pl"
 fi
 
+if [ -d "$PRODUCTS/Sparkle.framework" ]; then
+  SPARKLE_FRAMEWORK="$PRODUCTS/Sparkle.framework"
+else
+SPARKLE_FRAMEWORK="$(python3 - <<'PY'
+from pathlib import Path
+macos_xc = []
+other = []
+for root in (Path(".build"), Path(".build/out")):
+    if not root.exists():
+        continue
+    for path in root.rglob("Sparkle.framework"):
+        parts = {part.lower() for part in path.parts}
+        if parts & {"ios", "tvos", "watchos"}:
+            continue
+        text = str(path)
+        if "xcframework" in text and "macos" in text:
+            macos_xc.append(path)
+        else:
+            other.append(path)
+chosen = macos_xc[0] if macos_xc else (other[0] if other else None)
+if chosen is not None:
+    print(chosen)
+PY
+)"
+fi
+if [ ! -d "${SPARKLE_FRAMEWORK:-}" ]; then
+  echo "erro: Sparkle.framework ausente após o swift build" >&2
+  exit 1
+fi
+rm -rf "$CONTENTS/Frameworks/Sparkle.framework"
+cp -R "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/Sparkle.framework"
+
+SPARKLE_INFO_ENTRIES=""
+if [ "$PROBE" != true ]; then
+  PUBLIC_ED_KEY_FILE="scripts/release/sparkle_ed_public.txt"
+  test -s "$PUBLIC_ED_KEY_FILE"
+  SPARKLE_PUBLIC_ED_KEY="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_text().strip())' "$PUBLIC_ED_KEY_FILE")"
+  SPARKLE_INFO_ENTRIES="    <key>SUFeedURL</key><string>https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_ED_KEY}</string>
+    <key>SUEnableAutomaticChecks</key><false/>
+    <key>SUAutomaticallyUpdate</key><false/>"
+fi
+
 # Strings de permissão do Info.plist localizadas nos 15 idiomas (DEC-016);
 # o macOS resolve o .lproj pela língua do sistema ao mostrar o prompt.
 INFOPLIST_DIR="Resources/InfoPlist"
@@ -174,6 +217,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>NSDownloadsFolderUsageDescription</key><string>Hexa accesses your Downloads folder to scan for caches and leftover files from the Cleaner and Uninstaller, only after you ask for it.</string>
     <key>HexaBuildCommit</key><string>$BUILD_COMMIT</string>
     <key>HexaFanControlHelperVersion</key><string>$HELPER_VERSION</string>
+$SPARKLE_INFO_ENTRIES
 </dict>
 </plist>
 PLIST
@@ -198,6 +242,7 @@ cat > "$CONTENTS/Library/LaunchDaemons/$HELPER_ID.plist" <<PLIST
 PLIST
 
 echo "==> codesign local autenticado"
+codesign --force --options runtime --sign "$SIGN_IDENTITY" "$CONTENTS/Frameworks/Sparkle.framework"
 codesign --force --options runtime --sign "$SIGN_IDENTITY" "$CONTENTS/Frameworks/libNowPlayingAdapter.dylib"
 codesign --force --options runtime --sign "$SIGN_IDENTITY" --identifier "$HELPER_ID" "$CONTENTS/MacOS/FanControlHelper"
 codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$CONTENTS/MacOS/Hexa"
