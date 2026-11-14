@@ -7,9 +7,33 @@ import SwiftUI
 
 // MARK: - About
 
+enum AboutSelfUpdateCopy {
+    static func text(for status: HexaSelfUpdateStatus, strings: Strings) -> String? {
+        switch status {
+        case .idle:
+            return nil
+        case .checking:
+            return strings.updateChecking
+        case .upToDate:
+            return strings.updateUpToDate
+        case .available:
+            return strings.updateAvailable
+        case .failed:
+            return strings.updateFailed
+        case .developerBuild:
+            return strings.updateDevBuild
+        }
+    }
+}
+
 struct AboutSettings: View {
     @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var selfUpdate: HexaSelfUpdateController
     @Environment(\.openURL) private var openURL
+
+    init(selfUpdate: HexaSelfUpdateController = .shared) {
+        _selfUpdate = ObservedObject(wrappedValue: selfUpdate)
+    }
 
     var body: some View {
         HexaScreenScaffold(title: l10n.s.tabAbout,
@@ -58,6 +82,19 @@ struct AboutSettings: View {
                 Label(l10n.s.obRedoOnboarding, hexaIcon: "sparkles")
             }
             .buttonStyle(HexaActionButtonStyle())
+            Button {
+                selfUpdate.requestCheck()
+            } label: {
+                Label(l10n.s.checkForUpdates, hexaIcon: "arrow.clockwise")
+            }
+            .buttonStyle(HexaActionButtonStyle())
+            .disabled(selfUpdate.status == .checking)
+            if let statusCopy = AboutSelfUpdateCopy.text(for: selfUpdate.status, strings: l10n.s) {
+                Text(statusCopy)
+                    .font(.hexa(.label))
+                    .foregroundStyle(HexaTheme.fgSecondary)
+                    .multilineTextAlignment(.center)
+            }
             // Toda ação da tela usa o mesmo casco de ação neutra (spec §7).
             Button {
                 openURL(AppInfo.downloadURL)

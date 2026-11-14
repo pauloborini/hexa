@@ -557,6 +557,10 @@ extension Strings {
         reviewHighlights: "Повторно показать обзор новинок",
         viewOnGitHub: "Открыть на GitHub",
         downloadLatestRelease: "Скачать последнюю версию",
+        checkForUpdates: "Проверить обновления",
+        updateAvailable: "Доступно обновление.",
+        updateFailed: "Не удалось проверить обновления. Попробуйте ещё раз или скачайте последнюю версию.",
+        updateDevBuild: "Эта сборка для разработки не обращается к публичному каналу.",
 
         obContinue: "Далее",
         obBack: "Назад",

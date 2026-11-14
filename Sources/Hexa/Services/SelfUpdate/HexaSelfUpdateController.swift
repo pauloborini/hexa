@@ -15,6 +15,8 @@ enum HexaSelfUpdateStatus: Equatable {
 }
 
 final class HexaSelfUpdateController: ObservableObject {
+    static let shared = HexaSelfUpdateController()
+
     @Published private(set) var status: HexaSelfUpdateStatus = .idle
 
     private let isDeveloperBuild: Bool

@@ -556,6 +556,10 @@ extension Strings {
         reviewHighlights: "Revoir les nouveautés",
         viewOnGitHub: "Voir sur GitHub",
         downloadLatestRelease: "Télécharger la dernière version",
+        checkForUpdates: "Vérifier les mises à jour",
+        updateAvailable: "Une mise à jour est disponible.",
+        updateFailed: "Impossible de vérifier les mises à jour. Réessayez ou téléchargez la dernière version.",
+        updateDevBuild: "Cette version de développement ne consulte pas le flux public.",
 
         obContinue: "Continuer",
         obBack: "Retour",

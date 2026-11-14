@@ -556,6 +556,10 @@ extension Strings {
         reviewHighlights: "Znova zobraziť novinky",
         viewOnGitHub: "Zobraziť na GitHube",
         downloadLatestRelease: "Stiahnuť najnovšiu verziu",
+        checkForUpdates: "Skontrolovať aktualizácie",
+        updateAvailable: "Je k dispozícii aktualizácia.",
+        updateFailed: "Aktualizácie sa nepodarilo skontrolovať. Skúste to znova alebo stiahnite najnovšiu verziu.",
+        updateDevBuild: "Toto vývojové zostavenie nekontroluje verejný kanál.",
 
         obContinue: "Pokračovať",
         obBack: "Späť",

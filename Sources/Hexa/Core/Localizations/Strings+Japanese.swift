@@ -556,6 +556,10 @@ extension Strings {
         reviewHighlights: "新機能ツアーを見直す",
         viewOnGitHub: "GitHub で見る",
         downloadLatestRelease: "最新バージョンをダウンロード",
+        checkForUpdates: "アップデートを確認",
+        updateAvailable: "アップデートがあります。",
+        updateFailed: "アップデートを確認できませんでした。再試行するか、最新版をダウンロードしてください。",
+        updateDevBuild: "この開発ビルドは公開フィードを確認しません。",
 
         obContinue: "続ける",
         obBack: "戻る",
