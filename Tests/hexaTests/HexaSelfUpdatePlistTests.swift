@@ -54,10 +54,11 @@ final class HexaSelfUpdatePlistTests: XCTestCase {
         XCTAssertTrue(matches.isEmpty, "seed hex longa de chave privada encontrada")
 
         XCTAssertTrue(build.contains("test -s \"$PUBLIC_ED_KEY_FILE\""))
+        XCTAssertFalse(build.contains("# test -s \"$PUBLIC_ED_KEY_FILE\""))
         XCTAssertTrue(build.contains("scripts/release/sparkle_ed_public.txt"))
         let nonProbe = try nonProbeSparkleBlock(in: build)
         XCTAssertTrue(nonProbe.contains("sparkle_ed_public.txt"))
-        XCTAssertTrue(nonProbe.contains("test -s"))
+        XCTAssertTrue(nonProbe.contains("\n  test -s \"$PUBLIC_ED_KEY_FILE\"\n"))
     }
 
     func test_production_plist_has_stable_feed_and_public_key() throws {

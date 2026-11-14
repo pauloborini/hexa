@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Paulo Borini
 
+import Combine
 import Foundation
 import ObjectiveC
 import Sparkle
@@ -42,6 +43,29 @@ final class HexaSelfUpdateTests: XCTestCase {
         XCTAssertFalse(source.contains("allowedChannels"))
         XCTAssertFalse(source.contains("setFeedURL"))
         XCTAssertFalse(source.contains("beta"))
+    }
+
+    func test_background_status_applies_on_main() {
+        let client = SpyClient()
+        let controller = HexaSelfUpdateController(
+            isDeveloperBuild: false,
+            clientFactory: HexaSelfUpdateClientFactory(make: { client })
+        )
+        let applied = expectation(description: "failed status on main")
+        client.onCheck = {
+            DispatchQueue.global(qos: .userInitiated).async {
+                client.onStatus?(.failed)
+            }
+        }
+        let observer = controller.$status.sink { status in
+            if status == .failed {
+                XCTAssertTrue(Thread.isMainThread)
+                applied.fulfill()
+            }
+        }
+        controller.requestCheck()
+        wait(for: [applied], timeout: 1)
+        _ = observer
     }
 
     func test_developer_build_skips_sparkle() {

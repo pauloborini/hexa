@@ -53,7 +53,10 @@ final class HexaSelfUpdateAboutTests: XCTestCase {
 
     func test_tap_requests_check_and_shows_checking() throws {
         let about = try aboutSettingsSource()
-        XCTAssertTrue(about.contains("selfUpdate.requestCheck()"))
+        XCTAssertTrue(about.contains("Button {\n                selfUpdate.requestCheck()\n            } label: {"))
+        XCTAssertFalse(about.contains("// selfUpdate.requestCheck()"))
+        XCTAssertTrue(about.contains(".disabled(selfUpdate.status == .checking)"))
+        XCTAssertTrue(about.contains("ProgressView()"))
         XCTAssertTrue(about.contains("AboutSelfUpdateCopy.text(for: selfUpdate.status"))
 
         let spy = CheckSpy()

@@ -89,6 +89,11 @@ struct AboutSettings: View {
             }
             .buttonStyle(HexaActionButtonStyle())
             .disabled(selfUpdate.status == .checking)
+            if selfUpdate.status == .checking {
+                ProgressView()
+                    .tint(HexaTheme.fgSecondary)
+                    .controlSize(.small)
+            }
             if let statusCopy = AboutSelfUpdateCopy.text(for: selfUpdate.status, strings: l10n.s) {
                 Text(statusCopy)
                     .font(.hexa(.label))

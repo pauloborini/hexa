@@ -46,7 +46,13 @@ final class HexaSelfUpdateController: ObservableObject {
         apply(.checking)
         let client = clientFactory.make()
         client.onStatus = { [weak self] status in
-            self?.apply(status)
+            if Thread.isMainThread {
+                self?.apply(status)
+            } else {
+                DispatchQueue.main.async {
+                    self?.apply(status)
+                }
+            }
         }
         activeClient = client
         client.check()
