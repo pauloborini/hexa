@@ -30,8 +30,6 @@ final class HexaSelfUpdateTests: XCTestCase {
         XCTAssertEqual(recorder.flagsAtStart?.autoCheck, false)
         XCTAssertEqual(recorder.flagsAtStart?.autoDownload, false)
         XCTAssertEqual(recorder.flagsAtStart?.profile, false)
-        XCTAssertNil(recorder.assignedFeedURL)
-        XCTAssertTrue(recorder.assignedChannels.isEmpty)
         let source = try! String(
             contentsOf: URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
@@ -83,6 +81,53 @@ final class HexaSelfUpdateTests: XCTestCase {
     func test_production_factory_returns_sparkle_client() {
         let client = HexaSelfUpdateClientFactory.production.make()
         XCTAssertTrue(client is SparkleSelfUpdateClient)
+    }
+
+    func test_default_updater_adapter_writes_flags_to_real_sparkle() {
+        let defaults = UserDefaults.standard
+        let touched = [
+            "SUEnableAutomaticChecks", "SUSendProfileInfo",
+            "SUAutomaticallyUpdate", "SUHasLaunchedBefore"
+        ]
+        let saved = touched.map { defaults.object(forKey: $0) }
+        // Host adversarial: um setter que não encaminha ao SPUUpdater real não passa daqui.
+        defaults.set(true, forKey: "SUEnableAutomaticChecks")
+        defaults.set(true, forKey: "SUSendProfileInfo")
+        defaults.set(true, forKey: "SUAutomaticallyUpdate")
+        defer {
+            for (key, value) in zip(touched, saved) {
+                if let value {
+                    defaults.set(value, forKey: key)
+                } else {
+                    defaults.removeObject(forKey: key)
+                }
+            }
+        }
+
+        let client = SparkleSelfUpdateClient(makeStandardDriver: { RecordingUserDriver() })
+        client.check()
+
+        let reader = SPUUpdater(
+            hostBundle: .main,
+            applicationBundle: .main,
+            userDriver: RecordingUserDriver(),
+            delegate: nil
+        )
+        XCTAssertFalse(reader.automaticallyChecksForUpdates)
+        XCTAssertFalse(reader.automaticallyDownloadsUpdates)
+        XCTAssertFalse(reader.sendsSystemProfile)
+        XCTAssertNil(reader.feedURL)
+    }
+
+    func test_default_standard_driver_is_sparkle_standard() throws {
+        var wrapped: HexaSparkleUserDriver?
+        let client = SparkleSelfUpdateClient(makeUpdater: { driver in
+            wrapped = driver as? HexaSparkleUserDriver
+            return RecordingUpdater()
+        })
+        client.check()
+        let standard = try XCTUnwrap(wrapped).standard
+        XCTAssertTrue(standard is SPUStandardUserDriver)
     }
 
     func test_user_driver_forwards_found_to_standard() throws {
@@ -175,8 +220,6 @@ private final class RecordingUpdater: HexaSparkleUpdaterControlling {
     var automaticallyChecksForUpdates = true
     var automaticallyDownloadsUpdates = true
     var sendsSystemProfile = true
-    var assignedFeedURL: URL?
-    var assignedChannels: Set<String> = []
     var flagsAtStart: (autoCheck: Bool, autoDownload: Bool, profile: Bool)?
 
     func start() throws {

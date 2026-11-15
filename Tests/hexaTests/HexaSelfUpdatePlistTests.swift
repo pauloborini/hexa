@@ -67,14 +67,33 @@ final class HexaSelfUpdatePlistTests: XCTestCase {
         XCTAssertTrue(keys.contains("<key>SUFeedURL</key><string>https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml</string>"))
         XCTAssertTrue(keys.contains("<key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_ED_KEY}</string>"))
         XCTAssertTrue(keys.contains("<key>SUEnableAutomaticChecks</key><false/>"))
+    }
 
-        let publicFile = repoRoot.appendingPathComponent("scripts/release/sparkle_ed_public.txt")
-        if FileManager.default.isReadableFile(atPath: publicFile.path),
-           let contents = try? String(contentsOf: publicFile, encoding: .utf8) {
-            let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
-            XCTAssertFalse(trimmed.isEmpty)
-            XCTAssertTrue(build.contains("pathlib.Path(sys.argv[1]).read_text().strip()"))
-        }
+    func test_sparkle_plist_branch_executes_and_fails_closed() throws {
+        let build = try String(contentsOf: repoRoot.appendingPathComponent("build.sh"), encoding: .utf8)
+        let block = try sparkleInfoEntriesBlock(in: build)
+        // Chave pública publicada pelo próprio Sparkle em
+        // Tests/Resources/SUUpdateValidatorTest/EDOnly.bundle/Contents/Info.plist.
+        let publicKey = "rhHib+w769W2/6/t+oM1ZxgjBB93BfBKMLO0Qo1etQs="
+
+        let production = try runSparkleBlock(block, probe: false, publicKey: "  \(publicKey)\n\n")
+        XCTAssertEqual(production.status, 0)
+        XCTAssertTrue(production.output.contains("<key>SUFeedURL</key><string>https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml</string>"))
+        XCTAssertTrue(production.output.contains("<key>SUPublicEDKey</key><string>\(publicKey)</string>"))
+        XCTAssertTrue(production.output.contains("<key>SUEnableAutomaticChecks</key><false/>"))
+        XCTAssertTrue(production.output.contains("<key>SUAutomaticallyUpdate</key><false/>"))
+
+        let probe = try runSparkleBlock(block, probe: true, publicKey: nil)
+        XCTAssertEqual(probe.status, 0)
+        XCTAssertEqual(probe.output, "")
+
+        let missing = try runSparkleBlock(block, probe: false, publicKey: nil)
+        XCTAssertNotEqual(missing.status, 0)
+        XCTAssertEqual(missing.output, "")
+
+        let empty = try runSparkleBlock(block, probe: false, publicKey: "")
+        XCTAssertNotEqual(empty.status, 0)
+        XCTAssertEqual(empty.output, "")
     }
 
     func test_probe_plist_omits_sparkle_keys() throws {
@@ -115,6 +134,48 @@ final class HexaSelfUpdatePlistTests: XCTestCase {
             throw TestParseError.missing
         }
         return String(build[start.lowerBound..<end.upperBound])
+    }
+
+    private func sparkleInfoEntriesBlock(in build: String) throws -> String {
+        guard let start = build.range(of: "SPARKLE_INFO_ENTRIES=\"\""),
+              let end = build[start.upperBound...].range(of: "\nfi") else {
+            XCTFail("bloco SPARKLE_INFO_ENTRIES ausente")
+            throw TestParseError.missing
+        }
+        return String(build[start.lowerBound..<end.upperBound])
+    }
+
+    private func runSparkleBlock(
+        _ block: String,
+        probe: Bool,
+        publicKey: String?
+    ) throws -> (status: Int32, output: String) {
+        let sandbox = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString)
+        let keyDirectory = sandbox.appendingPathComponent("scripts/release")
+        try FileManager.default.createDirectory(at: keyDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        if let publicKey {
+            try publicKey.write(
+                to: keyDirectory.appendingPathComponent("sparkle_ed_public.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            "-c",
+            "set -euo pipefail\nPROBE=\(probe ? "true" : "false")\n\(block)\nprintf '%s' \"$SPARKLE_INFO_ENTRIES\"\n"
+        ]
+        process.currentDirectoryURL = sandbox
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
     private func contentsOfDirectory(named relative: String) throws -> [String] {
