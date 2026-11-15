@@ -9,16 +9,12 @@ protocol HexaSparkleUpdaterControlling: AnyObject {
     var automaticallyChecksForUpdates: Bool { get set }
     var automaticallyDownloadsUpdates: Bool { get set }
     var sendsSystemProfile: Bool { get set }
-    var assignedFeedURL: URL? { get }
-    var assignedChannels: Set<String> { get }
     func start() throws
     func checkForUpdates()
 }
 
 final class SPUUpdaterControl: HexaSparkleUpdaterControlling {
     private let updater: SPUUpdater
-    private(set) var assignedFeedURL: URL?
-    private(set) var assignedChannels: Set<String> = []
 
     init(updater: SPUUpdater) {
         self.updater = updater

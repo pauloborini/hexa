@@ -6,7 +6,7 @@ import Foundation
 import Sparkle
 
 final class HexaSparkleUserDriver: NSObject, SPUUserDriver {
-    private let standard: SPUUserDriver
+    let standard: SPUUserDriver
     private let onStatus: (HexaSelfUpdateStatus) -> Void
 
     init(standard: SPUUserDriver, onStatus: @escaping (HexaSelfUpdateStatus) -> Void) {
