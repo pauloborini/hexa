@@ -14,7 +14,8 @@
 - O repositório usa Gitflow: `develop` é a integração e `main` recebe releases públicas.
 - Neste rollout inicial, a branch de trabalho aprovada pelo operador abre PR para `develop`; depois `develop` abre PR para `main`.
 - Usar merge commit (`--no-ff`) para preservar o histórico de release.
-- Branches protegidas exigem as aprovações configuradas no GitHub. Não contornar proteção, mesmo para administradores.
+- PRs de outros colaboradores precisam das aprovações configuradas no GitHub; não usar bypass administrativo para eles.
+- PRs criadas pelo proprietário do repositório podem ser integradas sem aprovação quando ele instruir explicitamente o bypass administrativo. Registrar cada exceção no runbook da release; não desativar a proteção globalmente.
 - Criar a tag anotada `vX.Y.Z` somente depois do PR para `main`, no SHA final validado.
 - Após a publicação e a atualização do Cask, sincronizar `main` para `develop` por PR quando o histórico de integração exigir.
 - O bootstrap v0.2.0 é a primeira release com updater; não criar release de teste pública para validar Sparkle.
