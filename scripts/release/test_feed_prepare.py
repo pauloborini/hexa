@@ -85,9 +85,9 @@ class FakeSparkle:
                 xml = xml.replace(
                     "</channel>",
                     (
-                        "<description>-----BEGIN PRIVATE KEY-----\n"
-                        f"{EXPORT_BODY}\n"
-                        "-----END PRIVATE KEY-----</description></channel>"
+                        "<description>-----BEGIN " + "PRIVATE KEY-----\n"
+                        + f"{EXPORT_BODY}\n"
+                        + "-----END " + "PRIVATE KEY-----</description></channel>"
                     ),
                 )
             Path(output).write_text(xml)

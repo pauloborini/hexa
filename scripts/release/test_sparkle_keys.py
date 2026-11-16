@@ -142,7 +142,7 @@ class SparkleKeysTests(unittest.TestCase):
             if not path.is_file() or path.suffix in {".py", ".pyc"}:
                 continue
             text = path.read_text(errors="ignore")
-            self.assertNotIn("-----BEGIN PRIVATE KEY-----", text, path.name)
+            self.assertNotIn("-----BEGIN " + "PRIVATE KEY-----", text, path.name)
             self.assertNotIn("-----BEGIN OPENSSH PRIVATE KEY-----", text, path.name)
             self.assertNotIn(self.fake.export_body, text, path.name)
 

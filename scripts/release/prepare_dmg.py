@@ -33,6 +33,22 @@ def signature(path):
     result = subprocess.run(["codesign", "-dv", "--verbose=4", str(path)], capture_output=True, text=True, check=True)
     return result.stderr
 
+def sign_sparkle(app, identity, signing_options):
+    framework = Path(app) / "Contents/Frameworks/Sparkle.framework"
+    version = (framework / "Versions/Current").resolve()
+    components = [
+        (version / "Autoupdate", ["--identifier", "Autoupdate", "--preserve-metadata=entitlements"]),
+        (version / "Updater.app", []),
+        (version / "XPCServices/Downloader.xpc", []),
+        (version / "XPCServices/Installer.xpc", []),
+        (framework, []),
+    ]
+    missing = [path for path, _ in components if not path.exists()]
+    if missing:
+        raise SystemExit("componente Sparkle aninhado ausente: " + str(missing[0].name))
+    for path, extra in components:
+        run("codesign", "--force", "--sign", identity, *signing_options, *extra, path)
+
 def signing_identity(preview, requested):
     data = run("security", "find-identity", "-v", "-p", "codesigning", capture=True)
     records = re.findall(r'^\s*\d+\) ([a-fA-F0-9]{40}) "([^"]+)"', data, re.MULTILINE)
@@ -187,6 +203,7 @@ def main():
         if name == "Hexa":
             extra += ["--entitlements", "Resources/Hexa.entitlements"]
         run("codesign", "--force", "--sign", identity, *signing_options, *extra, path)
+    sign_sparkle(app, identity, signing_options)
     run("codesign", "--force", "--sign", identity, *signing_options, "--entitlements", "Resources/Hexa.entitlements", app)
     run("codesign", "--verify", "--deep", "--strict", app)
     app_signature = signature(app)
