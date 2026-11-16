@@ -3,6 +3,83 @@
 
 # Changelog
 
+## [0.2.0] - 2026-11-16
+
+<!-- locale: en-US -->
+### In-app updates
+- Check for updates in About and install a new version only after you confirm.
+- Improves the reliability of signed updates installed from the app.
+
+<!-- locale: pt-BR -->
+### Atualizações pelo app
+- Verifique atualizações em Sobre e instale uma nova versão somente após sua confirmação.
+- Melhora a confiabilidade das atualizações assinadas instaladas pelo próprio Hexa.
+
+<!-- locale: tr -->
+### Uygulama içi güncellemeler
+- Hakkında bölümünde güncellemeleri kontrol edin ve yeni sürümü yalnızca onayınızdan sonra kurun.
+- Uygulama üzerinden kurulan imzalı güncellemelerin güvenilirliğini artırır.
+
+<!-- locale: ru -->
+### Обновления в приложении
+- Проверяйте обновления в разделе «О приложении» и устанавливайте новую версию только после подтверждения.
+- Повышает надежность подписанных обновлений, устанавливаемых из приложения.
+
+<!-- locale: es -->
+### Actualizaciones desde la app
+- Busca actualizaciones en Acerca de e instala una nueva versión solo después de confirmarlo.
+- Mejora la fiabilidad de las actualizaciones firmadas que se instalan desde la app.
+
+<!-- locale: sk -->
+### Aktualizácie v aplikácii
+- Vyhľadajte aktualizácie v časti O aplikácii a novú verziu nainštalujte až po potvrdení.
+- Zvyšuje spoľahlivosť podpísaných aktualizácií inštalovaných priamo z aplikácie.
+
+<!-- locale: de -->
+### Updates direkt in der App
+- Suche unter „Über“ nach Updates und installiere eine neue Version erst nach deiner Bestätigung.
+- Verbessert die Zuverlässigkeit signierter Updates, die über die App installiert werden.
+
+<!-- locale: fr -->
+### Mises à jour dans l’app
+- Recherchez les mises à jour dans À propos et installez une nouvelle version uniquement après confirmation.
+- Améliore la fiabilité des mises à jour signées installées depuis l’app.
+
+<!-- locale: it -->
+### Aggiornamenti nell’app
+- Cerca aggiornamenti in Info e installa una nuova versione solo dopo la tua conferma.
+- Migliora l’affidabilità degli aggiornamenti firmati installati dall’app.
+
+<!-- locale: ja -->
+### アプリ内アップデート
+- 「このアプリについて」で更新を確認し、確認後に新しいバージョンをインストールできます。
+- アプリからインストールする署名済みアップデートの信頼性を高めました。
+
+<!-- locale: ko -->
+### 앱 내 업데이트
+- 정보 화면에서 업데이트를 확인하고, 확인한 뒤에만 새 버전을 설치합니다.
+- 앱에서 설치하는 서명된 업데이트의 안정성을 높였습니다.
+
+<!-- locale: uk -->
+### Оновлення в застосунку
+- Перевіряйте оновлення в розділі «Про програму» й встановлюйте нову версію лише після підтвердження.
+- Підвищено надійність підписаних оновлень, які встановлюються із застосунку.
+
+<!-- locale: zh-Hans -->
+### 应用内更新
+- 可在“关于”中检查更新，并在确认后安装新版本。
+- 提高了从应用中安装已签名更新的可靠性。
+
+<!-- locale: zh-TW -->
+### App 內更新
+- 可在「關於」中檢查更新，並在確認後安裝新版本。
+- 提升從 App 安裝已簽署更新的可靠性。
+
+<!-- locale: zh-HK -->
+### 應用程式內更新
+- 可在「關於」中檢查更新，並在確認後安裝新版本。
+- 提升從應用程式安裝已簽署更新的可靠性。
+
 ## [0.1.0] - 2026-11-01
 
 <!-- locale: en-US -->

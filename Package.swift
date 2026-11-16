@@ -13,6 +13,9 @@ let package = Package(
         .executable(name: "FanControlHelper", targets: ["FanControlHelper"]),
         .library(name: "NowPlayingAdapter", type: .dynamic, targets: ["NowPlayingAdapter"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1")
+    ],
     targets: [
         .systemLibrary(
             name: "VMStatisticsCompat",
@@ -28,7 +31,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "Hexa",
-            dependencies: ["VMStatisticsCompat", "FanControlCore", "NotchPlaybackCore"],
+            dependencies: [
+                "VMStatisticsCompat",
+                "FanControlCore",
+                "NotchPlaybackCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "Sources/Hexa",
             resources: [
                 .copy("Resources/Fonts"),
@@ -49,7 +57,11 @@ let package = Package(
         ),
         .testTarget(
             name: "hexaTests",
-            dependencies: ["Hexa", "FanControlCore"],
+            dependencies: [
+                "Hexa",
+                "FanControlCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "Tests/hexaTests"
         )
     ]
