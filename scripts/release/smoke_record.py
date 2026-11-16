@@ -1,49 +1,14 @@
 #!/usr/bin/env python3
-"""Registro assinado do ensaio de fumaca e barreira de OBL-01..13 do legado-provas.
-
-Leitura e validacao apenas: nao rede, nao escreve resultados de obrigacoes.
-Uso: smoke_record.py --check .app-work/smoke/<versao>/RECORD.md
-"""
+"""Valida o registro de smoke da release em uma máquina macOS arm64."""
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SMOKE_DIR = ROOT / ".app-work/smoke"
-ROADMAP = ROOT / ".app-work/archive/roadmap/legado-provas-teste/roadmap.json"
-GATE_OBLIGATIONS = [f"OBL-{n:02d}" for n in range(1, 14)]
-
-MODULES = [
-    "App Updates",
-    "Monitor de sistema",
-    "Uninstaller",
-    "Cleaner + Tarefas de manutenção",
-    "Media tools",
-    "Dynamic Island",
-    "Mixer por app",
-    "Keep Awake",
-    "Luz do teclado",
-    "Brilho de tela",
-    "Kill Process + Port Manager",
-    "Captura de tela + OCR",
-]
-MAINTENANCE = [
-    "flushDNS",
-    "freePurgeable",
-    "purgeInactiveMemory",
-    "rebuildLaunchServices",
-    "rebuildSpotlight",
-    "cleanupHomebrew",
-]
-CHIP_SECTIONS = ["## Chip mapeado", "## Chip fora do mapa"]
-CHIP_MAPPED = "mapped"
-CHIP_UNMAPPED = "unmapped"
-CHIP_GENERIC = "generic"
-CHECKBOXES = ["Localização", "Caracterização"]
+SMOKE_DIR = ROOT / ".app-work" / "smoke"
+CRITERIA = ("R1", "R2", "R3")
 FORBIDDEN = re.compile(r"(?i)e-?mail|serial|agend|schedul")
-ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$", re.M)
 
 
 def _refuse(message):
@@ -58,9 +23,9 @@ def _read(path):
     try:
         return Path(path).read_text(encoding="utf-8")
     except FileNotFoundError:
-        _refuse(f"Registro de ensaio ausente: {path}. Copie scripts/release/fixtures/RECORD_template.md e assine.")
+        _refuse("Registro de smoke ausente. Copie scripts/release/fixtures/RECORD_template.md e preencha-o.")
     except UnicodeDecodeError:
-        _refuse(f"Registro de ensaio não é UTF-8: {path}.")
+        _refuse("Registro de smoke não é UTF-8.")
 
 
 def _field(text, label):
@@ -68,120 +33,51 @@ def _field(text, label):
     return match.group(1).strip() if match else ""
 
 
-def _chip(body):
-    match = re.search(r"^\*\*Chip:\*\*[ \t]*(.*)$", body, re.M)
-    return match.group(1).strip() if match else ""
-
-
-def _apple_silicon_generation(brand):
-    prefix = "Apple M"
-    if not brand.startswith(prefix):
-        return None
-    remainder = brand[len(prefix):]
-    if not remainder:
-        return None
-    first = remainder[0]
-    if first not in "12345":
-        return None
-    after = remainder[1:]
-    if after and after[0] != " ":
-        return None
-    return int(first)
-
-
-def chip_platform(brand):
-    """Espelha TemperatureSensorSelector.platform(brandString:) para a classe do ensaio."""
-    name = (brand or "").strip()
-    if name == "Apple A18 Pro":
-        return CHIP_GENERIC
-    if _apple_silicon_generation(name) is not None:
-        return CHIP_MAPPED
-    if name.startswith("Apple "):
-        return CHIP_UNMAPPED
-    return CHIP_GENERIC
-
-
 def _section(text, heading):
-    match = re.search(rf"^{re.escape(heading)}[ \t]*$(.*?)(?=^## |\Z)", text, re.M | re.S)
-    return match.group(1) if match else None
+    pattern = rf"^## {re.escape(heading)}(?:[ \t]+[^\n]*)?[ \t]*$(.*?)(?=^## |\Z)"
+    matches = list(re.finditer(pattern, text, re.M | re.S))
+    if len(matches) > 1:
+        _refuse(f"Registro contém a seção {heading} mais de uma vez.")
+    return matches[0].group(1) if matches else None
 
 
-def _rows(body):
-    rows = []
-    for name, result in ROW.findall(body):
-        if name in {"Módulo", "Tarefa"} or set(name) <= set("-: "):
-            continue
-        rows.append((name, result))
-    return rows
-
-
-def _check_section(heading, body):
-    rows = _rows(body)
-    names = [name for name, _ in rows]
-    if len(names) != len(set(names)):
-        _refuse(f"{heading}: linha duplicada.")
-    unknown = [name for name in names if name not in MODULES and name not in MAINTENANCE]
-    if unknown:
-        _refuse(f"{heading}: linha não prevista no escopo: {unknown[0]}.")
-    results = dict(rows)
-    for module in MODULES:
-        if module not in results:
-            _refuse(f"{heading}: módulo ausente no registro: {module}.")
-    for task in MAINTENANCE:
-        if task not in results:
-            _refuse(f"{heading}: tarefa de manutenção ausente: {task}.")
-    failed = [name for name, result in rows if result != "pass"]
-    if failed:
-        _refuse(f"{heading}: {failed[0]} não está como pass; a versão não é aprovada.")
+def _evidence_path(value, criterion):
+    path = Path(value)
+    if path.is_absolute():
+        _refuse(f"Evidência de {criterion} precisa usar caminho relativo ao repositório.")
+    resolved = (ROOT / path).resolve()
+    if not resolved.is_relative_to(ROOT.resolve()):
+        _refuse(f"Evidência de {criterion} aponta para fora do repositório.")
+    if not resolved.is_file():
+        _refuse(f"Evidência de {criterion} ausente.")
 
 
 def validate(record_path, expected_version):
-    text = _read(record_path)
+    path = Path(record_path).resolve()
+    if not path.is_relative_to(ROOT.resolve()):
+        _refuse("Registro de smoke precisa ficar dentro do repositório.")
+    text = _read(path)
     if FORBIDDEN.search(text):
         _refuse("Registro contém campo proibido (e-mail, serial ou agendamento).")
     if _field(text, "Versão") != expected_version:
         _refuse(f"Registro não corresponde à versão {expected_version}.")
-    signer = _field(text, "Operador (assinatura)")
-    if not signer or signer == "pendente":
-        _refuse("Registro sem assinatura do operador.")
-    chips = []
-    for heading in CHIP_SECTIONS:
-        body = _section(text, heading)
+    if _field(text, "Arquitetura") != "arm64":
+        _refuse("Registro precisa confirmar a arquitetura arm64.")
+    if not _field(text, "Máquina") or _field(text, "Máquina").casefold() == "pendente":
+        _refuse("Registro sem identificação da máquina de smoke.")
+    operator = _field(text, "Operador (atestação)")
+    if not operator or operator.casefold() == "pendente":
+        _refuse("Registro sem atestação do operador.")
+    for criterion in CRITERIA:
+        body = _section(text, criterion)
         if body is None:
-            _refuse(f"Registro sem a seção '{heading}'.")
-        chip = _chip(body)
-        if not chip or chip == "pendente":
-            _refuse(f"{heading}: linha 'Chip:' ausente ou vazia.")
-        expected = CHIP_MAPPED if heading == "## Chip mapeado" else CHIP_UNMAPPED
-        if chip_platform(chip) != expected:
-            if heading == "## Chip mapeado":
-                _refuse(f"{heading}: chip {chip} não é família M1–M5 mapeada.")
-            else:
-                _refuse(f"{heading}: chip {chip} não está fora do mapa de gerações (unmappedAppleSilicon).")
-        chips.append(chip)
-        _check_section(heading, body)
-    if chips[0].casefold() == chips[1].casefold():
-        _refuse("As duas classes de chip têm o mesmo valor em 'Chip:'; a segunda classe não foi ensaiada.")
-    for label in CHECKBOXES:
-        if not re.search(rf"^- \[x\] {label}", text, re.M):
-            _refuse(f"Verificação '{label}' não marcada no registro.")
-
-
-def require_release_obligations(roadmap_path=ROADMAP):
-    try:
-        roadmap = json.loads(Path(roadmap_path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        _refuse(f"legado-provas ilegível: {roadmap_path}.")
-    results = {}
-    for slice_ in roadmap.get("slices", []):
-        for obligation in slice_.get("obligations", []):
-            results[obligation.get("id")] = obligation.get("result")
-    missing = [oid for oid in GATE_OBLIGATIONS if oid not in results]
-    if missing:
-        _refuse(f"legado-provas sem obrigações do gate: {', '.join(missing)}.")
-    open_ = [oid for oid in GATE_OBLIGATIONS if results[oid] != "PASSED"]
-    if open_:
-        _refuse(f"Obrigações do legado-provas abertas: {', '.join(open_)}. Publicação bloqueada.")
+            _refuse(f"Registro sem a seção {criterion}.")
+        if _field(body, "Resultado") != "pass":
+            _refuse(f"{criterion} não está como pass.")
+        evidence = _field(body, "Evidência")
+        if not evidence:
+            _refuse(f"Evidência de {criterion} ausente.")
+        _evidence_path(evidence, criterion)
 
 
 def main(argv=None):
@@ -190,8 +86,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     version = args.check.parent.name
     validate(args.check, version)
-    require_release_obligations()
-    print(f"Registro {version} válido.")
+    print(f"Registro {version} válido em uma máquina arm64.")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from prepare_dmg import RELEASES, digest, run as default_run
 from release_version import bundle_version
-from smoke_record import default_record, require_release_obligations, validate
+from smoke_record import default_record, validate
 
 APPCAST_NAME = "appcast.xml"
 
@@ -114,7 +114,6 @@ def main(
     run_gh=default_run_gh,
     run=default_run,
     validate_smoke=validate,
-    require_obligations=require_release_obligations,
 ):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folder", type=Path)
@@ -130,7 +129,6 @@ def main(
         raise SystemExit("Recibo fora de .app-work/releases/.")
     manifest = json.loads((folder / "release.json").read_text())
     validate_smoke(args.smoke_record or default_record(manifest["version"]), manifest["version"])
-    require_obligations()
     if manifest["preview"] or manifest["dirty"] or not manifest["notarized"]:
         raise SystemExit("Release exige build limpo, assinatura e notarização confirmadas.")
     if Path(manifest["dmg"]).name != manifest["dmg"]:

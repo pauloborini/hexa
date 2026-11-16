@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Restore comprovado, perda recusada e plaintext de -x fora do repo."""
+"""Backup, verificação e restore EdDSA sem plaintext no repositório."""
 import io
 import os
 import shutil
@@ -41,6 +41,8 @@ class FakeSparkle:
                 self.keychain_has_key = True
                 return ""
             if args[:1] == ["-x"]:
+                if Path(args[1]).exists():
+                    raise AssertionError("generate_keys -x exige um destino ainda inexistente")
                 Path(args[1]).write_text(self.export_body)
                 return ""
             if args[:1] == ["-f"]:
@@ -81,6 +83,10 @@ class SparkleKeysTests(unittest.TestCase):
             sparkle_keys.export_backup(self.image, self.password, run_sparkle=self.fake)
         return buffer.getvalue()
 
+    def test_password_can_be_read_from_stdin(self):
+        with mock.patch("sys.stdin", io.StringIO("stdin-backup-password\n")):
+            self.assertEqual(sparkle_keys._read_password(Path("-")), "stdin-backup-password")
+
     def test_restore_matches_recorded_public_key(self):
         self.public_path.write_text(PUBLIC + "\n")
         self.captured_export()
@@ -109,6 +115,16 @@ class SparkleKeysTests(unittest.TestCase):
             [call for call in self.fake.calls[len(before):] if call[:1] == ["sign_update"]],
             [],
         )
+
+    def test_verify_backup_matches_current_private_key(self):
+        self.captured_export()
+        self.assertIsNone(
+            sparkle_keys.verify_backup(self.image, self.password, run_sparkle=self.fake)
+        )
+        export_calls = [call for call in self.fake.calls if call[:2] == ["generate_keys", "-x"]]
+        self.assertEqual(len(export_calls), 2)
+        for call in export_calls:
+            self.assertFalse(Path(call[2]).exists())
 
     def test_loss_refuses_new_key(self):
         self.public_path.write_text(PUBLIC + "\n")
@@ -156,6 +172,14 @@ class SparkleKeysTests(unittest.TestCase):
         self.assertIsNotNone(fail_path)
         self.assertFalse(fail_path.exists())
         self.assertFalse(broken.exists())
+
+    def test_export_refuses_to_overwrite_existing_backup(self):
+        self.image.write_bytes(b"existing backup")
+        with self.assertRaises(SystemExit) as raised:
+            sparkle_keys.export_backup(self.image, self.password, run_sparkle=self.fake)
+        self.assertIn("não será sobrescrita", str(raised.exception))
+        self.assertEqual(self.image.read_bytes(), b"existing backup")
+        self.assertIsNone(self.fake.export_path())
 
     def test_default_run_sparkle_invokes_sparkle_binary(self):
         bindir = Path(tempfile.mkdtemp(prefix="hexa-sparkle-bin-"))

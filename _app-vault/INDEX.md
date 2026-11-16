@@ -1,6 +1,6 @@
 ---
 vault_version: 1
-updated: 2026-11-09
+updated: 2026-11-16
 scope: decisões de produto do hexa (escopo, comportamento, design do notch, licença, identidade e design system)
 ---
 
@@ -13,7 +13,7 @@ scope: decisões de produto do hexa (escopo, comportamento, design do notch, lic
 - [uninstaller](docs/decisions/uninstaller.md) — seleção de sobras e atalho selecionar tudo
 - [licenca-e-identidade](docs/decisions/licenca-e-identidade.md) — licença GPL, código-fonte público, release no repositório público, identidade própria e design system
 
-- [versionamento](docs/decisions/versionamento.md) — versão pública inicial beta e fonte canônica
+- [versionamento](docs/decisions/versionamento.md) — versão pública inicial, fonte canônica e cobertura do smoke de release
 
 ## Specs (contexto técnico, não decisão)
 

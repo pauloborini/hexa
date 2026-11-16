@@ -5,6 +5,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -117,20 +118,12 @@ def init_keys(public_key_path=DEFAULT_PUBLIC_KEY, run_sparkle=default_run_sparkl
     return printed
 
 
-def _temp_outside_repo(kind):
-    if kind == "file":
-        handle, name = tempfile.mkstemp(prefix="hexa-sparkle-x-")
-        os.close(handle)
-        path = Path(name)
-    else:
-        path = Path(tempfile.mkdtemp(prefix="hexa-sparkle-src-"))
+def _temp_outside_repo():
+    path = Path(tempfile.mkdtemp(prefix="hexa-sparkle-src-"))
     try:
         _require_outside_repo(path, "temporário Sparkle")
     except SystemExit:
-        if kind == "file":
-            path.unlink(missing_ok=True)
-        else:
-            shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(path, ignore_errors=True)
         raise
     return path
 
@@ -140,7 +133,6 @@ def _create_encrypted_image(src_folder, dest_image, password):
         [
             "/usr/bin/hdiutil",
             "create",
-            "-ov",
             "-encryption",
             "AES-256",
             "-stdinpass",
@@ -199,6 +191,17 @@ def _detach_image(mount):
     )
 
 
+def _require_encrypted_image(image):
+    completed = subprocess.run(
+        ["/usr/bin/hdiutil", "isencrypted", str(image)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0 or "encrypted: YES" not in completed.stdout.splitlines():
+        _refuse("imagem de backup EdDSA não está cifrada.")
+
+
 def _private_on_volume(mount):
     named = mount / PRIVATE_NAME
     if named.is_file():
@@ -212,27 +215,23 @@ def _private_on_volume(mount):
 def export_backup(dest_image, password, run_sparkle=default_run_sparkle):
     dest = Path(dest_image)
     _require_outside_repo(dest, "imagem de backup EdDSA")
+    if dest.exists():
+        raise SystemExit("imagem de backup EdDSA já existe; não será sobrescrita")
     if not password:
         raise SystemExit("senha do backup ausente")
-    x_path = None
     src_dir = None
     try:
-        x_path = _temp_outside_repo("file")
-        run_sparkle(["generate_keys", "-x", str(x_path)])
-        if not x_path.is_file() or x_path.stat().st_size == 0:
+        src_dir = _temp_outside_repo()
+        private_key = src_dir / PRIVATE_NAME
+        run_sparkle(["generate_keys", "-x", str(private_key)])
+        if not private_key.is_file() or private_key.stat().st_size == 0:
             raise SystemExit("generate_keys -x não gravou o export")
-        src_dir = _temp_outside_repo("dir")
-        shutil.copy2(x_path, src_dir / PRIVATE_NAME)
-        x_path.unlink()
-        x_path = None
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             _create_encrypted_image(src_dir, dest, password)
         except OSError:
             raise SystemExit("falha ao criar imagem criptografada do backup EdDSA")
     finally:
-        if x_path is not None:
-            Path(x_path).unlink(missing_ok=True)
         if src_dir is not None:
             shutil.rmtree(src_dir, ignore_errors=True)
     if not dest.is_file():
@@ -278,11 +277,37 @@ def restore_backup(
         _detach_image(mount)
 
 
+def verify_backup(image, password, run_sparkle=default_run_sparkle):
+    image = Path(image)
+    _require_outside_repo(image, "imagem de backup EdDSA")
+    if not image.is_file():
+        raise SystemExit("imagem de backup EdDSA ausente")
+    if not password:
+        raise SystemExit("senha do backup ausente")
+    _require_encrypted_image(image)
+    source = _temp_outside_repo()
+    current_key = source / PRIVATE_NAME
+    mount = None
+    try:
+        run_sparkle(["generate_keys", "-x", str(current_key)])
+        if not current_key.is_file() or current_key.stat().st_size == 0:
+            raise SystemExit("generate_keys -x não gravou o export")
+        mount = _attach_image(image, password)
+        backup_key = _private_on_volume(mount)
+        if backup_key.read_bytes() != current_key.read_bytes():
+            raise SystemExit("backup EdDSA diverge da chave atual do Chaveiro")
+    finally:
+        _detach_image(mount)
+        shutil.rmtree(source, ignore_errors=True)
+
+
 def _read_password(password_file):
     if password_file is None:
         import getpass
 
         return getpass.getpass("senha do backup EdDSA: ")
+    if str(password_file) == "-":
+        return sys.stdin.readline().rstrip("\r\n")
     path = Path(password_file)
     _require_outside_repo(path, "arquivo de senha")
     if not path.is_file():
@@ -293,19 +318,23 @@ def _read_password(password_file):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["init", "export", "restore"])
+    parser.add_argument("command", choices=["init", "export", "restore", "verify"])
     parser.add_argument("--image", type=Path)
-    parser.add_argument("--password-file", type=Path)
+    parser.add_argument("--password-file", type=Path, help="arquivo fora do repositório ou - para ler uma linha de stdin")
     parser.add_argument("--public-key", type=Path, default=DEFAULT_PUBLIC_KEY)
     args = parser.parse_args(argv)
     if args.command == "init":
         init_keys(public_key_path=args.public_key)
         return
     if args.image is None:
-        raise SystemExit("--image é obrigatório para export e restore")
+        raise SystemExit("--image é obrigatório para export, restore e verify")
     password = _read_password(args.password_file)
     if args.command == "export":
         export_backup(args.image, password)
+        return
+    if args.command == "verify":
+        verify_backup(args.image, password)
+        print("Backup EdDSA descriptografado e conferido com a chave do Chaveiro.")
         return
     restore_backup(args.image, password, public_key_path=args.public_key)
 

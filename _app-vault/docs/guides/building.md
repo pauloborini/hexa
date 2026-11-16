@@ -128,6 +128,8 @@ O script realiza as seguintes etapas automaticamente:
 
 Os scripts de `scripts/release/` montam um DMG arm64 (DEC-027) sem criar tag, notarizar ou publicar. Todos gravam em `.app-work/releases/`, pasta criada pelos próprios scripts e ignorada pelo Git.
 
+O fluxo de branches, revisão, smoke, notarização e publicação está em [`scripts/release/BUILD_AND_RELEASE.md`](../../../scripts/release/BUILD_AND_RELEASE.md).
+
 ```bash
 ./build.sh --release                      # bundle base em build/hexa.app
 scripts/release/build-release.sh          # gate de segredos + produtos arm64 com proveniência

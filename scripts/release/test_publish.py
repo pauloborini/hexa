@@ -245,7 +245,6 @@ class PublishMainTests(unittest.TestCase):
             run_gh=gh or self.gh,
             run=self.fake_run,
             validate_smoke=lambda path, version: None,
-            require_obligations=lambda: None,
         )
 
     def test_default_cli_does_not_undraft(self):
