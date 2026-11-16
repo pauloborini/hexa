@@ -10,7 +10,7 @@
 - Plataforma: macOS 14 ou posterior, arm64
 - GitHub Release: https://github.com/pauloborini/hexa/releases/tag/v0.2.0
 - Feed Sparkle: `https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml`
-- Homebrew Cask: `0.2.0`, PR de integração pendente
+- Homebrew Cask: `0.2.0`, integrado em `develop` pelo PR #3 e em `main` pelo PR #4
 - DMG: `hexa-0.2.0-arm64.dmg`
 - SHA-256 do DMG: `29264d8854946b6826cc80081fe8bd3bf893e84130d29dd707de3279b63e2ca8`
 - Notarização do app: aceita
@@ -38,4 +38,4 @@ Check for updates in About and install a new version only after you confirm. Sig
 - Smoke R1-R3 em uma máquina arm64: validado pelo gate atualizado.
 - Backup EdDSA: validado fora do repositório.
 - Tag `v0.2.0`, DMG e `appcast.xml`: publicados e validados.
-- Cask 0.2.0: candidato pronto, integração via PR pendente.
+- Cask 0.2.0: integrado em `develop` e `main`; histórico sincronizado pelo PR #5.
