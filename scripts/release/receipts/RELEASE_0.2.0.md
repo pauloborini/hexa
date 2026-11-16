@@ -6,15 +6,17 @@
 - Tag: `v0.2.0`
 - Branches: `codex/release-v0.2.0` -> `develop` -> `main`
 - SHA-base: `ff4db74d30fbcb2741a4e8ed8d1d9032f3c512af`
-- SHA final em `main`: pendente de revisão e integração
+- SHA do commit de release em `main`: `08e716b15e86c6a4246e28bb27183cc02ba67d02`
 - Plataforma: macOS 14 ou posterior, arm64
-- GitHub Release: pendente
+- GitHub Release: https://github.com/pauloborini/hexa/releases/tag/v0.2.0
 - Feed Sparkle: `https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml`
-- Homebrew Cask: pendente
-- DMG e checksum: pendentes do build no SHA final de `main`
-- Notarização: pendente
-- Smoke arm64 R1-R3: validado no Mac Apple M5 Pro, evidências em `.app-work/guides/UPDATER_INITIAL_ROLLOUT_GUIDE/evidence/`
-- Backup EdDSA AES-256: criado e comparado com a chave atual do Chaveiro; senha armazenada no Chaveiro
+- Homebrew Cask: `0.2.0`, PR de integração pendente
+- DMG: `hexa-0.2.0-arm64.dmg`
+- SHA-256 do DMG: `29264d8854946b6826cc80081fe8bd3bf893e84130d29dd707de3279b63e2ca8`
+- Notarização do app: aceita
+- Notarização do DMG: aceita
+- Smoke arm64 R1-R3: validado no Mac Apple M5 Pro.
+- Backup EdDSA AES-256: criado e comparado com a chave atual do Chaveiro; senha armazenada no Chaveiro.
 
 ## O que há de novo
 
@@ -35,6 +37,5 @@ Check for updates in About and install a new version only after you confirm. Sig
 
 - Smoke R1-R3 em uma máquina arm64: validado pelo gate atualizado.
 - Backup EdDSA: validado fora do repositório.
-- PR de integração para `develop`: pendente.
-- PR de promoção de `develop` para `main`: pendente.
-- Tag, GitHub Release, publicação do appcast e atualização do Cask: pendentes.
+- Tag `v0.2.0`, DMG e `appcast.xml`: publicados e validados.
+- Cask 0.2.0: candidato pronto, integração via PR pendente.
