@@ -557,6 +557,10 @@ extension Strings {
         reviewHighlights: "重看新功能導覽",
         viewOnGitHub: "在 GitHub 上查看",
         downloadLatestRelease: "下載最新版本",
+        checkForUpdates: "檢查更新",
+        updateAvailable: "有可用更新。",
+        updateFailed: "無法檢查更新。請再試一次或下載最新版本。",
+        updateDevBuild: "此開發版不會查詢公開來源。",
 
         obContinue: "繼續",
         obBack: "返回",

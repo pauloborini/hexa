@@ -814,6 +814,10 @@ struct Strings {
     let reviewHighlights: String
     let viewOnGitHub: String
     let downloadLatestRelease: String
+    let checkForUpdates: String
+    let updateAvailable: String
+    let updateFailed: String
+    let updateDevBuild: String
 
     // MARK: Onboarding
     let obContinue: String
@@ -1836,6 +1840,10 @@ extension Strings {
         reviewHighlights: "Rever notas da versão",
         viewOnGitHub: "Repositório no GitHub",
         downloadLatestRelease: "Baixar a versão mais recente",
+        checkForUpdates: "Verificar atualizações",
+        updateAvailable: "Há uma atualização disponível.",
+        updateFailed: "Não foi possível verificar as atualizações. Tente de novo ou baixe a versão mais recente.",
+        updateDevBuild: "Este build de desenvolvimento não consulta o feed público.",
 
         obContinue: "Continuar",
         obBack: "Voltar",
@@ -2840,6 +2848,10 @@ extension Strings {
         reviewHighlights: "Review release notes",
         viewOnGitHub: "GitHub Repository",
         downloadLatestRelease: "Download latest release",
+        checkForUpdates: "Check for updates",
+        updateAvailable: "An update is available.",
+        updateFailed: "Couldn’t check for updates. Try again or download the latest release.",
+        updateDevBuild: "This development build does not check the public feed.",
 
         obContinue: "Continue",
         obBack: "Back",

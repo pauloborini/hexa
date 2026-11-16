@@ -128,6 +128,8 @@ O script realiza as seguintes etapas automaticamente:
 
 Os scripts de `scripts/release/` montam um DMG arm64 (DEC-027) sem criar tag, notarizar ou publicar. Todos gravam em `.app-work/releases/`, pasta criada pelos próprios scripts e ignorada pelo Git.
 
+O fluxo de branches, revisão, smoke, notarização e publicação está em [`scripts/release/BUILD_AND_RELEASE.md`](../../../scripts/release/BUILD_AND_RELEASE.md).
+
 ```bash
 ./build.sh --release                      # bundle base em build/hexa.app
 scripts/release/build-release.sh          # gate de segredos + produtos arm64 com proveniência
@@ -142,7 +144,9 @@ python3 scripts/release/prepare_dmg.py --app build/hexa.app --preview
 - `--identity` (ou `HEXA_RELEASE_IDENTITY`) escolhe a identidade quando há mais de uma candidata.
 - Os produtos precisam corresponder ao commit e às fontes atuais; após qualquer mudança, rode `build-release.sh` de novo.
 
-Notarização e publicação (`notarize.py`, `publish.py`) são etapas do mantenedor e exigem credenciais próprias.
+Notarização (`notarize.py`) é etapa do mantenedor e exige credenciais próprias.
+
+`publish.py` cria o rascunho GitHub só com o DMG, `SHA256SUMS` e `release.json` (`gh release create --draft`). Depois anexa o `appcast.xml` gerado por `feed_prepare.py`, com esse nome de asset, materializando `https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml`. Tornar a release visível em `latest` (`--publish`, que dispara `gh release edit --draft=false`) só ocorre com os dois assets no rascunho e com pedido explícito do operador. Sem `--publish`, o fluxo para no rascunho completo. Este guia não autoriza publicação real.
 
 ---
 

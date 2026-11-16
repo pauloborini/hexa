@@ -556,6 +556,10 @@ extension Strings {
         reviewHighlights: "Yenilikler turunu incele",
         viewOnGitHub: "GitHub’da görüntüle",
         downloadLatestRelease: "En son sürümü indir",
+        checkForUpdates: "Güncellemeleri denetle",
+        updateAvailable: "Bir güncelleme var.",
+        updateFailed: "Güncellemeler denetlenemedi. Yeniden dene veya en son sürümü indir.",
+        updateDevBuild: "Bu geliştirme derlemesi genel beslemeyi sorgulamaz.",
 
         obContinue: "Devam",
         obBack: "Geri",
