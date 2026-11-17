@@ -258,14 +258,17 @@ final class MenuBarHidingService: ObservableObject {
         // `hide()` removes the monitors; a click already queued must not
         // restart a countdown for a section that is closing.
         guard isRunning, state == .expanded, !interactionMonitors.isEmpty else { return }
-        if isKey {
-            if keyCode == 53 { hide() }
-            return
-        }
-        if isInMenuBar(location) {
-            restartRehideTimer()
-        } else if currentRehideDelay.seconds == nil {
+        switch MenuBarHidingSupport.revealDecision(
+            isKey: isKey,
+            keyCode: keyCode,
+            isInMenuBar: isInMenuBar(location),
+            delay: currentRehideDelay) {
+        case .hide:
             hide()
+        case .restart:
+            restartRehideTimer()
+        case .ignore:
+            break
         }
     }
 

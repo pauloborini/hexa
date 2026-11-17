@@ -35,6 +35,13 @@ enum MenuBarHidingRehideDelay: String, CaseIterable {
     }
 }
 
+/// What one click or key means while the hidden section is open.
+enum MenuBarHidingRevealDecision: Equatable {
+    case hide
+    case restart
+    case ignore
+}
+
 /// One status item another app owns. Accessibility exposes no title or
 /// identifier for these, so the owning bundle and the frame are all there is.
 struct MenuBarHidingInventoryItem: Equatable {
@@ -117,6 +124,21 @@ enum MenuBarHidingEngineKind: Equatable {
 enum MenuBarHidingSupport {
     static func toggleSymbol(collapsed: Bool) -> String {
         collapsed ? "chevron.left" : "chevron.right"
+    }
+
+    /// The timed modes still wait out the chosen delay. Ending them on an
+    /// outside click is pending the DEC-041 amendment.
+    static func revealDecision(isKey: Bool,
+                               keyCode: UInt16,
+                               isInMenuBar: Bool,
+                               delay: MenuBarHidingRehideDelay) -> MenuBarHidingRevealDecision {
+        if isKey {
+            return keyCode == 53 ? .hide : .ignore
+        }
+        if isInMenuBar {
+            return .restart
+        }
+        return delay.seconds == nil ? .hide : .ignore
     }
 
     static func isDeveloperIDCertificateSubject(_ subject: String?) -> Bool {

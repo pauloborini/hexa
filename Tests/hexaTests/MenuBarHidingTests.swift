@@ -65,6 +65,21 @@ final class MenuBarHidingTests: XCTestCase {
         XCTAssertEqual(MenuBarHidingRehideDelay.tenSeconds.seconds, 10)
     }
 
+    func testRevealDecisionKeepsTheCurrentTimedBehavior() {
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: true, keyCode: 53, isInMenuBar: false, delay: .fiveSeconds), .hide)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: true, keyCode: 0, isInMenuBar: false, delay: .fiveSeconds), .ignore)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: false, keyCode: 0, isInMenuBar: true, delay: .fiveSeconds), .restart)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: false, keyCode: 0, isInMenuBar: false, delay: .instant), .hide)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: false, keyCode: 0, isInMenuBar: false, delay: .fiveSeconds), .ignore)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: false, keyCode: 0, isInMenuBar: false, delay: .tenSeconds), .ignore)
+    }
+
     func testLegacyPreferenceMigrationKeepsTheModuleEnabled() {
         let domain = "MenuBarHidingTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: domain)!
