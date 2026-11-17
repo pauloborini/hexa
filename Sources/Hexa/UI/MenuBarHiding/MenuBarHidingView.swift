@@ -51,6 +51,22 @@ struct MenuBarHidingView: View {
                         .pickerStyle(.menu)
                         .fixedSize()
                     }
+                    HairlineDivider()
+                    ShortcutPreferenceRow(
+                        role: .menuBarHiding,
+                        isEnabled: enabled,
+                        label: text.toggleShortcutTitle,
+                        symbolName: GlobalShortcutRole.menuBarHiding.feature.symbolName,
+                        statusText: enabled ? FeatureStrings.shortcuts(l10n.language).active
+                            : FeatureStrings.shortcuts(l10n.language).inactive,
+                        statusIsActive: enabled,
+                        onChange: { MenuBarHidingService.shared.syncWithPreferences() }
+                    )
+                    Text(text.toggleShortcutCaption)
+                        .hexaCaption()
+                    if service.shortcutRegistrationFailed {
+                        HexaStatusNote(message: text.shortcutUnavailable)
+                    }
                 }
             }
 

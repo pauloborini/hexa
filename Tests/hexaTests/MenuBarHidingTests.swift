@@ -94,6 +94,16 @@ final class MenuBarHidingTests: XCTestCase {
             isKey: false, keyCode: 0, isInMenuBar: false, delay: .tenSeconds), .ignore)
     }
 
+    func testMenuBarHidingShortcutRole() {
+        let role = GlobalShortcutRole.menuBarHiding
+        XCTAssertEqual(role.storageKey, DefaultsKey.menuBarHidingShortcut)
+        XCTAssertEqual(role.defaultShortcut, .menuBarHidingDefault)
+        XCTAssertEqual(role.requiredEnableKeys, [DefaultsKey.menuBarHidingEnabled])
+        XCTAssertEqual(role.feature, .menuBarHiding)
+        XCTAssertEqual(role.group, .tools)
+        XCTAssertTrue(GlobalShortcutRole.availableRoles(isAvailable: { _ in true }).contains(role))
+    }
+
     func testTheRehideLabelsArePresentInEveryLanguage() {
         for language in AppLanguage.allCases {
             let text = FeatureStrings.menuBarHiding(language)

@@ -570,6 +570,7 @@ enum DefaultsKey {
     // Splitting the menu bar into visible and hidden sections.
     static let menuBarHidingEnabled = "menuBarHidingEnabled"
     static let menuBarHidingRehideDelay = "menuBarHidingRehideDelay"
+    static let menuBarHidingShortcut = "menuBarHidingShortcut"
 
     /// Features hub availability layer, one key per AppFeature raw value.
     /// Registered true: unavailable features vanish from every surface and
@@ -643,6 +644,7 @@ enum Defaults {
         DefaultsKey.dockDisplayLockReturns: false,
         DefaultsKey.menuBarHidingEnabled: false,
         DefaultsKey.menuBarHidingRehideDelay: MenuBarHidingRehideDelay.defaultValue.rawValue,
+        DefaultsKey.menuBarHidingShortcut: GlobalShortcut.menuBarHidingDefault.storageValue,
         DefaultsKey.launchAtLoginWanted: false,
         DefaultsKey.keepAwakeShortcut: "control+option+command:40",
         DefaultsKey.showCountdown: false,

@@ -21,6 +21,9 @@ struct MenuBarHidingStrings {
     let rehideHint: String
     let rehideFiveSeconds: String
     let rehideTenSeconds: String
+    let toggleShortcutTitle: String
+    let toggleShortcutCaption: String
+    let shortcutUnavailable: String
 }
 
 extension FeatureStrings {
@@ -63,6 +66,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Instant hides again when you click outside the menu bar or press Escape. The other choices hide after the selected delay.",
         rehideFiveSeconds: "5 seconds",
         rehideTenSeconds: "10 seconds",
+        toggleShortcutTitle: "Toggle shortcut",
+        toggleShortcutCaption: "Hide or show the hidden section without leaving the keyboard.",
+        shortcutUnavailable: "The shortcut could not be registered. Choose another combination."
     )
 
     static let ptBR = MenuBarHidingStrings(
@@ -82,6 +88,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Instantâneo recolhe ao clicar fora da menu bar ou pressionar Escape. As outras opções recolhem após o prazo selecionado.",
         rehideFiveSeconds: "5 segundos",
         rehideTenSeconds: "10 segundos",
+        toggleShortcutTitle: "Atalho de alternância",
+        toggleShortcutCaption: "Oculta ou mostra a seção oculta sem sair do teclado.",
+        shortcutUnavailable: "Não foi possível registrar o atalho. Escolha outra combinação."
     )
 
     static let tr = MenuBarHidingStrings(
@@ -101,6 +110,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Anında seçeneği, menü çubuğunun dışına tıklayınca veya Escape tuşuna basınca gizler. Diğer seçenekler seçilen süreden sonra gizler.",
         rehideFiveSeconds: "5 saniye",
         rehideTenSeconds: "10 saniye",
+        toggleShortcutTitle: "Geçiş kısayolu",
+        toggleShortcutCaption: "Gizli bölümü klavyeden ayrılmadan gizler veya gösterir.",
+        shortcutUnavailable: "Kısayol kaydedilemedi. Başka bir kombinasyon seçin."
     )
 
     static let ru = MenuBarHidingStrings(
@@ -120,6 +132,9 @@ extension MenuBarHidingStrings {
         rehideHint: "«Мгновенно» скрывает значки после щелчка за пределами строки меню или нажатия Escape. Другие варианты скрывают их по истечении выбранного времени.",
         rehideFiveSeconds: "5 секунд",
         rehideTenSeconds: "10 секунд",
+        toggleShortcutTitle: "Сочетание переключения",
+        toggleShortcutCaption: "Скрывает или показывает скрытый раздел, не покидая клавиатуру.",
+        shortcutUnavailable: "Не удалось зарегистрировать сочетание. Выберите другое."
     )
 
     static let es = MenuBarHidingStrings(
@@ -139,6 +154,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Al instante vuelve a ocultar los iconos al hacer clic fuera de la barra de menús o pulsar Escape. Las otras opciones esperan el tiempo seleccionado.",
         rehideFiveSeconds: "5 segundos",
         rehideTenSeconds: "10 segundos",
+        toggleShortcutTitle: "Atajo de alternancia",
+        toggleShortcutCaption: "Oculta o muestra la sección oculta sin dejar el teclado.",
+        shortcutUnavailable: "No se pudo registrar el atajo. Elige otra combinación."
     )
 
     static let sk = MenuBarHidingStrings(
@@ -158,6 +176,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Možnosť Okamžite znova skryje ikony po kliknutí mimo panela ponúk alebo stlačení Escape. Ostatné možnosti ich skryjú po zvolenom čase.",
         rehideFiveSeconds: "5 sekúnd",
         rehideTenSeconds: "10 sekúnd",
+        toggleShortcutTitle: "Skratka prepínania",
+        toggleShortcutCaption: "Skryje alebo zobrazí skrytú sekciu bez opustenia klávesnice.",
+        shortcutUnavailable: "Skratku sa nepodarilo zaregistrovať. Vyberte inú kombináciu."
     )
 
     static let de = MenuBarHidingStrings(
@@ -177,6 +198,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Sofort blendet die Symbole wieder aus, wenn du außerhalb der Menüleiste klickst oder Escape drückst. Die anderen Optionen warten die gewählte Zeit.",
         rehideFiveSeconds: "5 Sekunden",
         rehideTenSeconds: "10 Sekunden",
+        toggleShortcutTitle: "Umschalt-Tastenkürzel",
+        toggleShortcutCaption: "Blendet den ausgeblendeten Bereich aus oder ein, ohne die Tastatur zu verlassen.",
+        shortcutUnavailable: "Das Tastenkürzel konnte nicht registriert werden. Wähle eine andere Kombination."
     )
 
     static let fr = MenuBarHidingStrings(
@@ -196,6 +220,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Instantanément masque les icônes lorsque vous cliquez hors de la barre des menus ou appuyez sur Échap. Les autres options attendent le délai choisi.",
         rehideFiveSeconds: "5 secondes",
         rehideTenSeconds: "10 secondes",
+        toggleShortcutTitle: "Raccourci de bascule",
+        toggleShortcutCaption: "Masque ou affiche la section masquée sans quitter le clavier.",
+        shortcutUnavailable: "Le raccourci n’a pas pu être enregistré. Choisissez une autre combinaison."
     )
 
     static let it = MenuBarHidingStrings(
@@ -215,6 +242,9 @@ extension MenuBarHidingStrings {
         rehideHint: "Subito nasconde di nuovo le icone quando fai clic fuori dalla barra dei menu o premi Esc. Le altre opzioni attendono il tempo selezionato.",
         rehideFiveSeconds: "5 secondi",
         rehideTenSeconds: "10 secondi",
+        toggleShortcutTitle: "Scorciatoia di commutazione",
+        toggleShortcutCaption: "Nasconde o mostra la sezione nascosta senza lasciare la tastiera.",
+        shortcutUnavailable: "Non è stato possibile registrare la scorciatoia. Scegli un’altra combinazione."
     )
 
     static let ja = MenuBarHidingStrings(
@@ -234,6 +264,9 @@ extension MenuBarHidingStrings {
         rehideHint: "「すぐに」はメニューバーの外をクリックするか Esc キーを押すとアイコンを再び隠します。ほかの選択肢では指定した時間後に隠します。",
         rehideFiveSeconds: "5秒",
         rehideTenSeconds: "10秒",
+        toggleShortcutTitle: "切り替えショートカット",
+        toggleShortcutCaption: "キーボードから離れずに非表示セクションを表示または非表示にします。",
+        shortcutUnavailable: "ショートカットを登録できませんでした。別の組み合わせを選んでください。"
     )
 
     static let ko = MenuBarHidingStrings(
@@ -253,6 +286,9 @@ extension MenuBarHidingStrings {
         rehideHint: "즉시는 메뉴 막대 바깥을 클릭하거나 Esc 키를 누르면 아이콘을 다시 숨깁니다. 다른 옵션은 선택한 시간이 지나면 숨깁니다.",
         rehideFiveSeconds: "5초",
         rehideTenSeconds: "10초",
+        toggleShortcutTitle: "전환 단축키",
+        toggleShortcutCaption: "키보드에서 손을 떼지 않고 숨김 섹션을 표시하거나 숨깁니다.",
+        shortcutUnavailable: "단축키를 등록할 수 없습니다. 다른 조합을 선택하세요."
     )
 
     static let uk = MenuBarHidingStrings(
@@ -272,6 +308,9 @@ extension MenuBarHidingStrings {
         rehideHint: "«Миттєво» знову приховує значки після клацання за межами рядка меню або натискання Escape. Інші варіанти чекають вибраний час.",
         rehideFiveSeconds: "5 секунд",
         rehideTenSeconds: "10 секунд",
+        toggleShortcutTitle: "Сполучення перемикання",
+        toggleShortcutCaption: "Приховує або показує прихований розділ, не залишаючи клавіатуру.",
+        shortcutUnavailable: "Не вдалося зареєструвати сполучення. Виберіть інше."
     )
 
     static let zhHans = MenuBarHidingStrings(
@@ -291,6 +330,9 @@ extension MenuBarHidingStrings {
         rehideHint: "选择“立即”时，点击菜单栏外或按下 Escape 会重新隐藏图标。其他选项会在所选时间后隐藏。",
         rehideFiveSeconds: "5 秒",
         rehideTenSeconds: "10 秒",
+        toggleShortcutTitle: "切换快捷键",
+        toggleShortcutCaption: "无需离开键盘即可显示或隐藏隐藏区域。",
+        shortcutUnavailable: "无法注册快捷键。请选择其他组合。"
     )
 
     static let zhTW = MenuBarHidingStrings(
@@ -310,6 +352,9 @@ extension MenuBarHidingStrings {
         rehideHint: "選擇「立即」時，點擊選單列外或按下 Escape 會重新隱藏圖示。其他選項會在所選時間後隱藏。",
         rehideFiveSeconds: "5 秒",
         rehideTenSeconds: "10 秒",
+        toggleShortcutTitle: "切換快速鍵",
+        toggleShortcutCaption: "不必離開鍵盤即可顯示或隱藏隱藏區域。",
+        shortcutUnavailable: "無法註冊快速鍵。請選擇其他組合。"
     )
 
     static let zhHK = MenuBarHidingStrings(
@@ -329,5 +374,8 @@ extension MenuBarHidingStrings {
         rehideHint: "選擇「立即」時，點擊選單列外或按下 Escape 會重新隱藏圖示。其他選項會在所選時間後隱藏。",
         rehideFiveSeconds: "5 秒",
         rehideTenSeconds: "10 秒",
+        toggleShortcutTitle: "切換快速鍵",
+        toggleShortcutCaption: "不必離開鍵盤即可顯示或隱藏隱藏區域。",
+        shortcutUnavailable: "無法註冊快速鍵。請選擇其他組合。"
     )
 }

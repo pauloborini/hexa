@@ -30,6 +30,7 @@ final class MenuBarHidingService: ObservableObject {
         didSet { applySeparatorLengthForCurrentState() }
     }
     @Published private(set) var itemsInSections: [MenuBarSection: [String]] = [:]
+    @Published private(set) var shortcutRegistrationFailed = false
 
     /// System item identifiers to keep visible. Unknown identifiers are
     /// ignored, so the range covers items a given Mac does not have.
@@ -38,6 +39,7 @@ final class MenuBarHidingService: ObservableObject {
     /// never calls it, the restriction is released rather than left in doubt.
     static let activationTimeout: TimeInterval = 3
 
+    private let toggleHotkey = QuickToolHotkey(id: 61)
     private var toggleItem: NSStatusItem?
     private var separatorItem: NSStatusItem?
     private var assertion: MenuBarVisibilityAssertion?
@@ -70,7 +72,11 @@ final class MenuBarHidingService: ObservableObject {
         MenuBarHidingEngineKind.forOperatingSystem()
     }
 
-    private init() {}
+    private init() {
+        toggleHotkey.onPress = { [weak self] in
+            Task { @MainActor in self?.toggleClicked() }
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -82,6 +88,7 @@ final class MenuBarHidingService: ObservableObject {
         if isRunning {
             applySeparatorLengthForCurrentState()
             refreshLayout()
+            syncToggleHotkey()
             return
         }
         installItemsIfNeeded()
@@ -90,6 +97,7 @@ final class MenuBarHidingService: ObservableObject {
         state = .expanded
         applySeparatorLengthForCurrentState()
         hide()
+        syncToggleHotkey()
     }
 
     func suspend() {
@@ -97,6 +105,8 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     private func stop() {
+        toggleHotkey.unregister()
+        shortcutRegistrationFailed = false
         rehideTimer?.invalidate()
         rehideTimer = nil
         removeInteractionMonitor()
@@ -443,6 +453,17 @@ final class MenuBarHidingService: ObservableObject {
             button.layer?.add(flip, forKey: "chevron")
         }
         button.image = image
+    }
+
+    private func syncToggleHotkey() {
+        let shortcut = GlobalShortcutRole.menuBarHiding.savedShortcut
+        let conflicts = isRunning && shortcut.conflictsWithSystemShortcut
+            && !SystemShortcutTakeover.isTakenOver(GlobalShortcutRole.menuBarHiding.storageKey)
+        let registered = toggleHotkey.sync(
+            enabled: isRunning && !conflicts,
+            shortcut: shortcut,
+            storageKey: GlobalShortcutRole.menuBarHiding.storageKey)
+        shortcutRegistrationFailed = isRunning && (conflicts || !registered)
     }
 
     // MARK: - Sections
