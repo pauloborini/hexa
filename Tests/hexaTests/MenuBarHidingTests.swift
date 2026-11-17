@@ -80,6 +80,15 @@ final class MenuBarHidingTests: XCTestCase {
             isKey: false, keyCode: 0, isInMenuBar: false, delay: .tenSeconds), .ignore)
     }
 
+    func testTheRehideLabelsArePresentInEveryLanguage() {
+        for language in AppLanguage.allCases {
+            let text = FeatureStrings.menuBarHiding(language)
+            XCTAssertFalse(text.rehideFiveSeconds.isEmpty, "\(language)")
+            XCTAssertFalse(text.rehideTenSeconds.isEmpty, "\(language)")
+            XCTAssertNotEqual(text.rehideFiveSeconds, text.rehideTenSeconds, "\(language)")
+        }
+    }
+
     func testLegacyPreferenceMigrationKeepsTheModuleEnabled() {
         let domain = "MenuBarHidingTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: domain)!

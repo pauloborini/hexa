@@ -42,9 +42,9 @@ struct MenuBarHidingView: View {
                         Picker(text.rehideDelayTitle, selection: $rehideDelay) {
                             Text(text.rehideInstant)
                                 .tag(MenuBarHidingRehideDelay.instant.rawValue)
-                            Text(l10n.s.monitorInterval5)
+                            Text(text.rehideFiveSeconds)
                                 .tag(MenuBarHidingRehideDelay.fiveSeconds.rawValue)
-                            Text(l10n.s.monitorInterval5.replacingOccurrences(of: "5", with: "10"))
+                            Text(text.rehideTenSeconds)
                                 .tag(MenuBarHidingRehideDelay.tenSeconds.rawValue)
                         }
                         .labelsHidden()
@@ -81,6 +81,9 @@ struct MenuBarHidingView: View {
         }
         .onChange(of: permissions.accessibility) { _, granted in
             if granted, enabled { MenuBarHidingService.shared.hide() }
+        }
+        .onChange(of: rehideDelay) { _, _ in
+            MenuBarHidingService.shared.rehideDelayDidChange()
         }
     }
 

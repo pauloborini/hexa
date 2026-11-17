@@ -251,6 +251,12 @@ final class MenuBarHidingService: ObservableObject {
         return MenuBarHidingRehideDelay(rawValue: rawValue) ?? .fiveSeconds
     }
 
+    /// Re-arms the countdown when the choice changes while the section is open.
+    func rehideDelayDidChange() {
+        guard isRunning, state == .expanded else { return }
+        restartRehideTimer()
+    }
+
     /// Reacts to one click or key while the section is open. Escape, and a
     /// click outside the bar with the instant choice, close it now; a click
     /// in the bar restarts the countdown.
