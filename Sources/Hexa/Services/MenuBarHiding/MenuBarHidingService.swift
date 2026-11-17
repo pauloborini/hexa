@@ -12,9 +12,9 @@ import SwiftUI
 ///
 /// The restriction takes an allow-list of bundles and hides every bundle the
 /// list omits, so it is applied only from a read that saw something and only
-/// while the hidden section is closed. An app whose items could not be read
-/// stays allowed: an icon left visible can be fixed with another click, an
-/// icon hidden by mistake cannot.
+/// while the hidden section is closed. An app that starts while the section is
+/// closed is hidden by default: the arrow reveals it. An app whose items could
+/// not be read stays visible, because a failed read is not a classification.
 @MainActor
 final class MenuBarHidingService: ObservableObject {
     static let shared = MenuBarHidingService()
@@ -121,7 +121,6 @@ final class MenuBarHidingService: ObservableObject {
     private func startObserving() {
         guard observers.isEmpty else { return }
         let center = NotificationCenter.default
-        let workspace = NSWorkspace.shared.notificationCenter
         // The arrangement is read on demand. Reading it on every app
         // activation would walk every running app through Accessibility
         // (near a second) for nothing: the restriction is rebuilt right
@@ -129,30 +128,9 @@ final class MenuBarHidingService: ObservableObject {
         observers = [
             (center, center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                         object: nil, queue: .main) { [weak self] _ in
-                self?.applySeparatorLengthForCurrentState()
-            }),
-            // An app that starts while the section is closed cannot be placed:
-            // its item is not in the arrangement, and an allow-list that omits
-            // it hides it. It stays visible, the same way an unreadable app
-            // does.
-            (workspace, workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
-                                              object: nil, queue: .main) { [weak self] note in
-                guard let bundle = (note.userInfo?[NSWorkspace.applicationUserInfoKey]
-                                    as? NSRunningApplication)?.bundleIdentifier else { return }
-                self?.includeBundle(bundle)
+                Task { @MainActor in self?.applySeparatorLengthForCurrentState() }
             }),
         ]
-    }
-
-    private func includeBundle(_ bundle: String) {
-        guard isRunning, assertion != nil, engineKind == .visibilityRestriction,
-              !appliedBundles.contains(bundle) else { return }
-        // Kept in the unread set too, so every later list built from the
-        // stored arrangement keeps it visible as well.
-        unreadBundles.insert(bundle)
-        let allowed = (appliedBundles + [bundle]).sorted()
-        // The published state is left as it is: the section stays closed.
-        activate(allowing: allowed) { _ in }
     }
 
     // MARK: - Status items
