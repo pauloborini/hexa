@@ -65,6 +65,20 @@ final class MenuBarHidingTests: XCTestCase {
         XCTAssertEqual(MenuBarHidingRehideDelay.tenSeconds.seconds, 10)
     }
 
+    func testTogglePresentationCarriesTheUnavailableReason() {
+        let normal = MenuBarHidingSupport.togglePresentation(
+            collapsed: true, unavailableReason: nil, title: "Ícones")
+        XCTAssertEqual(normal.symbol, "chevron.left")
+        XCTAssertEqual(normal.toolTip, "Ícones")
+        XCTAssertEqual(normal.accessibilityDescription, "Ícones")
+
+        let failed = MenuBarHidingSupport.togglePresentation(
+            collapsed: false, unavailableReason: "Sem acesso", title: "Ícones")
+        XCTAssertEqual(failed.symbol, "chevron.right")
+        XCTAssertEqual(failed.toolTip, "Sem acesso")
+        XCTAssertEqual(failed.accessibilityDescription, "Ícones: Sem acesso")
+    }
+
     func testRevealDecisionKeepsTheCurrentTimedBehavior() {
         XCTAssertEqual(MenuBarHidingSupport.revealDecision(
             isKey: true, keyCode: 53, isInMenuBar: false, delay: .fiveSeconds), .hide)

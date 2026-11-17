@@ -26,7 +26,9 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     @Published private(set) var isRunning = false
-    @Published private(set) var state: State = .expanded
+    @Published private(set) var state: State = .expanded {
+        didSet { applySeparatorLengthForCurrentState() }
+    }
     @Published private(set) var itemsInSections: [MenuBarSection: [String]] = [:]
 
     /// System item identifiers to keep visible. Unknown identifiers are
@@ -405,7 +407,7 @@ final class MenuBarHidingService: ObservableObject {
         } else {
             if case .collapsed = state { isCollapsed = true } else { isCollapsed = false }
         }
-        setToggleImage(collapsed: isCollapsed)
+        setTogglePresentation(collapsed: isCollapsed)
         // Only the separator engine has one; on macOS 27 the arrow is the
         // boundary.
         guard let separatorItem else { return }
@@ -416,12 +418,19 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     /// The arrow points where a click moves the icons: left while they are
-    /// hidden (they come out to the left), right while they are shown.
-    private func setToggleImage(collapsed: Bool) {
+    /// hidden (they come out to the left), right while they are shown. A
+    /// failed hide also carries its reason on the control.
+    private func setTogglePresentation(collapsed: Bool) {
         guard let button = toggleItem?.button else { return }
-        let symbol = MenuBarHidingSupport.toggleSymbol(collapsed: collapsed)
+        let reason: String? = if case let .unavailable(reason) = state { reason } else { nil }
+        let presentation = MenuBarHidingSupport.togglePresentation(
+            collapsed: collapsed, unavailableReason: reason, title: text.title)
+        button.toolTip = presentation.toolTip
+        button.setAccessibilityLabel(presentation.accessibilityDescription)
+        let symbol = presentation.symbol
         guard button.image?.name() != symbol,
-              let image = NSImage(systemSymbolName: symbol, accessibilityDescription: text.title)
+              let image = NSImage(systemSymbolName: symbol,
+                                  accessibilityDescription: presentation.accessibilityDescription)
         else { return }
         image.setName(symbol)
         if button.image != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {

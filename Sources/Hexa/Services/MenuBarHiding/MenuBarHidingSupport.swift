@@ -119,11 +119,34 @@ enum MenuBarHidingEngineKind: Equatable {
     }
 }
 
+/// Everything the toggle status item shows for one state.
+struct MenuBarHidingTogglePresentation: Equatable {
+    let symbol: String
+    let toolTip: String
+    let accessibilityDescription: String
+}
+
 /// The menu bar's own geometry, kept apart from the status items so it can be
 /// measured without a bar.
 enum MenuBarHidingSupport {
     static func toggleSymbol(collapsed: Bool) -> String {
         collapsed ? "chevron.left" : "chevron.right"
+    }
+
+    /// The failure reason belongs on the control the person just used, not
+    /// only on the module page. Normal states carry the module title.
+    static func togglePresentation(collapsed: Bool,
+                                   unavailableReason: String?,
+                                   title: String) -> MenuBarHidingTogglePresentation {
+        let symbol = toggleSymbol(collapsed: collapsed)
+        guard let reason = unavailableReason, !reason.isEmpty else {
+            return MenuBarHidingTogglePresentation(symbol: symbol,
+                                                   toolTip: title,
+                                                   accessibilityDescription: title)
+        }
+        return MenuBarHidingTogglePresentation(symbol: symbol,
+                                               toolTip: reason,
+                                               accessibilityDescription: "\(title): \(reason)")
     }
 
     /// The timed modes still wait out the chosen delay. Ending them on an
