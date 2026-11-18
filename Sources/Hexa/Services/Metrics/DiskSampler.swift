@@ -12,20 +12,13 @@ final class DiskSampler {
         var wholeDisk: String?
         var fileSystem: String?
         var ioCounterIDs: [String] = []
-        var totalBytes: UInt64?
-        var freeBytes: UInt64?
-        var rawFreeBytes: UInt64?
-        var purgeableBytes: UInt64?
-        var usedBytes: UInt64?
-        var isInternal: Bool?
-        var isRemovable: Bool?
-        var isEjectable: Bool?
-        var smart: DiskSMARTReading?
+        var smartServiceID: UInt64?
     }
 
     private var previous: [String: (counters: DiskIOCounters, time: TimeInterval)] = [:]
     private var sessionTotals: [String: DiskIOCounters] = [:]
-    private var metadataCache: [String: (metadata: DiskMetadata, updatedAt: TimeInterval, isFull: Bool)] = [:]
+    private var metadataCache: [String: (metadata: DiskMetadata, bsdName: String?, volumeUUID: String?, mediaID: UInt64, updatedAt: TimeInterval)] = [:]
+    private var smartCache: [UInt64: (reading: DiskSMARTReading?, updatedAt: TimeInterval)] = [:]
     private static let metadataRefreshInterval: TimeInterval = 30
     /// Panel closed: identity metadata only changes on (re)mount, so a full
     /// lookup stays reusable for a long time; the hourly re-run self-heals
@@ -38,19 +31,52 @@ final class DiskSampler {
     /// minutes long and still fall outside.
     private static let maxGap: TimeInterval = 15
 
-    func sample(now: TimeInterval, refreshMetadata: Bool = true) -> DiskReading {
-        let counters = Self.readCounters()
-        let devices = Self.mountedVolumes().map { volume -> DiskDeviceReading in
-            let metadata = metadata(for: volume, now: now, refresh: refreshMetadata)
+    func sample(now: TimeInterval, refreshMetadata: Bool = false,
+                isCurrent: () -> Bool = { true }) -> DiskReading {
+        guard isCurrent() else { return DiskReading(devices: []) }
+        let counters = Self.readCounters(isCurrent: isCurrent)
+        guard isCurrent() else { return DiskReading(devices: []) }
+        var diskSnapshots: [String: (readBytesPerSec: Double?, writeBytesPerSec: Double?,
+                                     totalRead: UInt64?, totalWritten: UInt64?)] = [:]
+        var smartSnapshots: [UInt64: DiskSMARTReading?] = [:]
+        var nextPrevious = previous
+        var nextSessionTotals = sessionTotals
+        let volumes = Self.mountedVolumes(isCurrent: isCurrent)
+        guard isCurrent() else { return DiskReading(devices: []) }
+        let devices = volumes.compactMap { volume -> DiskDeviceReading? in
+            guard isCurrent() else { return nil }
+            let metadata = metadata(for: volume, now: now, refresh: refreshMetadata, isCurrent: isCurrent)
+            guard isCurrent() else { return nil }
             let wholeDisk = metadata.wholeDisk
             let counter = Self.bestCounter(from: metadata.ioCounterIDs, counters: counters)
             let ioCounters = counter?.counters ?? DiskIOCounters()
             let diskID = counter?.id ?? wholeDisk ?? metadata.bsdName ?? volume.mountPath
-            let rates = ratesAndTotals(for: diskID, counters: ioCounters, now: now)
-            let isInternal = metadata.isInternal ?? volume.isInternal
-            let isRemovable = metadata.isRemovable ?? volume.isRemovable
-            let isEjectable = (metadata.isEjectable ?? volume.isEjectable) || (!isInternal && isRemovable)
-            let capacity = Self.bestCapacity(volume: volume, metadata: metadata)
+            let rates: (readBytesPerSec: Double?, writeBytesPerSec: Double?,
+                        totalRead: UInt64?, totalWritten: UInt64?)
+            if let snapshot = diskSnapshots[diskID] {
+                rates = snapshot
+            } else {
+                rates = Self.ratesAndTotals(for: diskID, counters: ioCounters, now: now,
+                                            previous: &nextPrevious, sessionTotals: &nextSessionTotals)
+                diskSnapshots[diskID] = rates
+            }
+            let isInternal = volume.isInternal
+            let isRemovable = volume.isRemovable || !isInternal
+            let isEjectable = volume.isEjectable || (!isInternal && isRemovable)
+            var smart: DiskSMARTReading?
+            if refreshMetadata, wholeDisk != nil, let serviceID = metadata.smartServiceID {
+                if let cached = smartSnapshots[serviceID] {
+                    smart = cached
+                } else if let cached = smartCache[serviceID], now - cached.updatedAt < Self.metadataRefreshInterval {
+                    smart = cached.reading
+                    smartSnapshots[serviceID] = .some(smart)
+                } else if isCurrent() {
+                    smart = NativeDisk.readSMART(serviceID: serviceID, isCurrent: isCurrent)
+                    guard isCurrent() else { return nil }
+                    smartCache[serviceID] = (smart, now)
+                    smartSnapshots[serviceID] = .some(smart)
+                }
+            }
             return DiskDeviceReading(id: volume.mountPath,
                                      name: volume.name,
                                      mountPath: volume.mountPath,
@@ -60,29 +86,34 @@ final class DiskSampler {
                                      ioCounterID: counter?.id,
                                      fileSystem: metadata.fileSystem
                                          ?? DiskSupport.fileSystemLabel(type: volume.fileSystemType),
-                                     totalBytes: capacity.total,
-                                     freeBytes: capacity.free,
-                                     purgeableBytes: capacity.purgeable,
-                                     usedBytes: capacity.used,
+                                     totalBytes: volume.totalBytes,
+                                     freeBytes: volume.freeBytes,
+                                     purgeableBytes: volume.purgeableBytes,
+                                     usedBytes: volume.usedBytes,
                                      isInternal: isInternal,
                                      isRemovable: isRemovable,
                                      isEjectable: isEjectable,
-                                     smart: metadata.smart,
+                                     smart: smart,
                                      readBytesPerSec: rates.readBytesPerSec,
                                      writeBytesPerSec: rates.writeBytesPerSec,
                                      totalReadBytes: rates.totalRead,
-                                     totalWrittenBytes: rates.totalWritten)
+                                     totalWrittenBytes: rates.totalWritten,
+                                     holdsSystemVolume: !volume.internalKnown)
         }
         // Any volume on the physical disk that holds `/` is the boot disk, even when
         // it is external and reports itself as ejectable.
-        let systemWholeDisks = Set(devices.filter { $0.mountPath == "/" }.compactMap(\.ejectBSDName))
+        let systemWholeDisks = Set(devices.filter { $0.mountPath == "/" }.compactMap(\.wholeDisk))
         let marked = devices.map { device -> DiskDeviceReading in
             var device = device
-            device.holdsSystemVolume = device.mountPath == "/"
-                || device.ejectBSDName.map(systemWholeDisks.contains) == true
+            device.holdsSystemVolume = device.holdsSystemVolume || systemWholeDisks.isEmpty || device.wholeDisk == nil || device.mountPath == "/"
+                || device.wholeDisk.map(systemWholeDisks.contains) == true
             return device
         }
-        return DiskReading(devices: marked.sorted(by: sortVolumes))
+        let sorted = marked.sorted(by: sortVolumes)
+        guard isCurrent() else { return DiskReading(devices: []) }
+        previous = nextPrevious
+        sessionTotals = nextSessionTotals
+        return DiskReading(devices: sorted)
     }
 
     private static func bestCounter(from ids: [String], counters: [String: DiskIOCounters])
@@ -95,33 +126,9 @@ final class DiskSampler {
         return nil
     }
 
-    private static func bestCapacity(volume: MountedVolume, metadata: DiskMetadata)
-        -> (total: UInt64, free: UInt64, used: UInt64, purgeable: UInt64?) {
-        let total = volume.totalBytes > 0 ? volume.totalBytes : (metadata.totalBytes ?? 0)
-        let free: UInt64
-        if volume.freeBytes > 0 {
-            free = volume.freeBytes
-        } else if let metadataFree = metadata.freeBytes {
-            free = metadataFree
-        } else {
-            free = 0
-        }
-        let purgeable = volume.purgeableBytes ?? metadata.purgeableBytes
-        let used: UInt64
-        if volume.usedBytes > 0 {
-            used = volume.usedBytes
-        } else if let metadataUsed = metadata.usedBytes {
-            used = metadataUsed
-        } else {
-            let rawFree = volume.rawFreeBytes ?? metadata.rawFreeBytes ?? free
-            used = total >= rawFree ? total - rawFree : 0
-        }
-        let clampedFree = min(free, total)
-        let clampedUsed = min(used, total)
-        return (total, clampedFree, clampedUsed, purgeable)
-    }
-
-    private func ratesAndTotals(for diskID: String, counters: DiskIOCounters, now: TimeInterval)
+    private static func ratesAndTotals(for diskID: String, counters: DiskIOCounters, now: TimeInterval,
+                                       previous: inout [String: (counters: DiskIOCounters, time: TimeInterval)],
+                                       sessionTotals: inout [String: DiskIOCounters])
         -> (readBytesPerSec: Double?, writeBytesPerSec: Double?, totalRead: UInt64?, totalWritten: UInt64?) {
         defer { previous[diskID] = (counters, now) }
         var totals = sessionTotals[diskID] ?? DiskIOCounters()
@@ -141,27 +148,38 @@ final class DiskSampler {
         return (speed.read, speed.write, totals.read, totals.written)
     }
 
-    private func metadata(for volume: MountedVolume, now: TimeInterval, refresh: Bool) -> DiskMetadata {
+    private func metadata(for volume: MountedVolume, now: TimeInterval, refresh: Bool,
+                          isCurrent: () -> Bool) -> DiskMetadata {
+        let mediaID = volume.bsdName.flatMap { NativeDisk.mediaID(bsdName: $0, isCurrent: isCurrent) }
         if let cached = metadataCache[volume.mountPath],
-           now - cached.updatedAt < Self.metadataRefreshInterval,
-           cached.isFull || !refresh {
+           cached.bsdName == volume.bsdName, cached.volumeUUID == volume.volumeUUID,
+           let mediaID, cached.mediaID == mediaID,
+           now - cached.updatedAt < Self.metadataRefreshInterval {
             return cached.metadata
         }
-        // Panel closed: keep reusing the last full lookup instead of building a
-        // lightweight identity. Synthesized APFS BSD names carry no
-        // IOBlockStorageDriver statistics (they live on the physical store, e.g.
-        // disk0), so a lightweight identity would zero the IO metric and fork
-        // session totals under a new disk ID. Capacity stays fresh either way —
-        // bestCapacity prefers the statfs volume values. A background cold start
-        // pays a single diskutil run per volume.
+        // Reuse the physical identity while the disk panel is closed.
         if !refresh,
            let cached = metadataCache[volume.mountPath],
-           cached.isFull,
+           cached.bsdName == volume.bsdName, cached.volumeUUID == volume.volumeUUID,
+           let mediaID, cached.mediaID == mediaID,
            now - cached.updatedAt < Self.backgroundMetadataRefreshInterval {
             return cached.metadata
         }
-        let metadata = Self.diskutilInfo(for: volume.mountPath)
-        metadataCache[volume.mountPath] = (metadata, now, true)
+        guard isCurrent() else { return DiskMetadata() }
+        let identity = volume.bsdName.map { NativeDisk.identity(bsdName: $0, isCurrent: isCurrent) }
+        let fileSystemName = volume.fileSystemType?.lowercased() == "msdos"
+            ? volume.bsdName.flatMap { NativeDisk.fileSystemName(bsdName: $0, isCurrent: isCurrent) } : nil
+        let metadata = DiskMetadata(bsdName: volume.bsdName,
+                                    wholeDisk: identity?.wholeDisk,
+                                    fileSystem: DiskSupport.fileSystemLabel(type: volume.fileSystemType, name: fileSystemName),
+                                    ioCounterIDs: [identity?.wholeDisk, volume.bsdName].compactMap { $0 },
+                                    smartServiceID: identity?.smartServiceID)
+        guard isCurrent() else { return DiskMetadata() }
+        if let id = identity?.mediaID, id == mediaID {
+            metadataCache[volume.mountPath] = (metadata, volume.bsdName, volume.volumeUUID, id, now)
+        } else {
+            return DiskMetadata(bsdName: volume.bsdName)
+        }
         return metadata
     }
 
@@ -178,17 +196,17 @@ final class DiskSampler {
         var volumeUUID: String?
         var totalBytes: UInt64
         var freeBytes: UInt64
-        var rawFreeBytes: UInt64?
         var purgeableBytes: UInt64?
         var usedBytes: UInt64
         var isInternal: Bool
+        var internalKnown: Bool
         var isRemovable: Bool
         var isEjectable: Bool
         var bsdName: String?
         var fileSystemType: String?
     }
 
-    private static func mountedVolumes() -> [MountedVolume] {
+    private static func mountedVolumes(isCurrent: () -> Bool) -> [MountedVolume] {
         let keys: Set<URLResourceKey> = [
             .volumeNameKey,
             .volumeLocalizedNameKey,
@@ -201,18 +219,19 @@ final class DiskSampler {
             .volumeIsLocalKey,
             .volumeUUIDStringKey,
         ]
-        guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys),
+        guard isCurrent(), let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys),
                                                                options: [.skipHiddenVolumes]) else {
             return []
         }
 
         return urls.compactMap { url in
-            guard let values = try? url.resourceValues(forKeys: keys),
+            guard isCurrent(), let values = try? url.resourceValues(forKeys: keys),
                   values.volumeIsLocal != false,
                   let total = positiveUInt(values.volumeTotalCapacity),
                   total > 0 else { return nil }
             let rawFree = positiveUInt(values.volumeAvailableCapacity, requiringPositive: true)
                 ?? positiveUInt(values.volumeAvailableCapacity)
+            guard isCurrent() else { return nil }
             let free = importantFree(for: url, isReadOnly: values.volumeIsReadOnly == true)
                 ?? rawFree
                 ?? 0
@@ -223,16 +242,17 @@ final class DiskSampler {
             let physicalUsed = rawFree.map { total >= $0 ? total - $0 : 0 }
                 ?? (total >= free ? total - free : 0)
             let name = values.volumeLocalizedName ?? values.volumeName ?? url.lastPathComponent
+            guard isCurrent() else { return nil }
             let identity = statfsIdentity(for: url.path)
             return MountedVolume(name: name.isEmpty ? url.path : name,
                                  mountPath: url.path,
                                  volumeUUID: values.volumeUUIDString,
                                  totalBytes: total,
                                  freeBytes: min(free, total),
-                                 rawFreeBytes: rawFree,
                                  purgeableBytes: purgeable,
                                  usedBytes: min(physicalUsed, total),
                                  isInternal: values.volumeIsInternal ?? false,
+                                 internalKnown: values.volumeIsInternal != nil,
                                  isRemovable: values.volumeIsRemovable ?? false,
                                  isEjectable: values.volumeIsEjectable ?? false,
                                  bsdName: identity.bsdName,
@@ -296,127 +316,56 @@ final class DiskSampler {
         return UInt64(value)
     }
 
-    private static func diskutilInfo(for mountPath: String) -> DiskMetadata {
-        guard let info = runDiskutilInfo(mountPath) else { return DiskMetadata() }
-        let bsdName = info["DeviceIdentifier"] as? String
-        let parentWholeDisk = info["ParentWholeDisk"] as? String
-        let physicalStore = (info["APFSPhysicalStores"] as? [[String: Any]])?.first?["APFSPhysicalStore"] as? String
-        let wholeDisk = physicalWholeDisk(from: physicalStore)
-            ?? physicalWholeDisk(from: parentWholeDisk)
-            ?? physicalWholeDisk(from: bsdName)
-        let total = DiskSupport.uint(info["APFSContainerSize"]) ?? DiskSupport.uint(info["TotalSize"])
-        let free = DiskSupport.uint(info["APFSContainerFree"]) ?? DiskSupport.uint(info["FreeSpace"])
-        let used = DiskSupport.uint(info["CapacityInUse"])
-            ?? total.flatMap { total in free.map { total >= $0 ? total - $0 : 0 } }
-        let status = info["SMARTStatus"] as? String
-        let vendorKeys = info["SMARTDeviceSpecificKeysMayVaryNotGuaranteed"] as? [String: Any]
-        let ioIDs = ioCounterIDs(bsdName: bsdName,
-                                 parentWholeDisk: parentWholeDisk,
-                                 physicalStore: physicalStore,
-                                 isInternal: info["Internal"] as? Bool ?? false)
-        return DiskMetadata(bsdName: bsdName,
-                            wholeDisk: wholeDisk,
-                            fileSystem: DiskSupport.fileSystemLabel(type: info["FilesystemType"] as? String,
-                                                                    name: info["FilesystemName"] as? String),
-                            ioCounterIDs: ioIDs,
-                            totalBytes: total,
-                            freeBytes: free,
-                            rawFreeBytes: free,
-                            purgeableBytes: nil,
-                            usedBytes: used,
-                            isInternal: info["Internal"] as? Bool,
-                            isRemovable: (info["RemovableMediaOrExternalDevice"] as? Bool)
-                                ?? (info["Removable"] as? Bool)
-                                ?? (info["RemovableMedia"] as? Bool),
-                            isEjectable: (info["Ejectable"] as? Bool)
-                                ?? (info["EjectableOnly"] as? Bool),
-                            smart: DiskSupport.smartReading(status: status, vendorKeys: vendorKeys))
-    }
-
-    private static func ioCounterIDs(bsdName: String?, parentWholeDisk: String?,
-                                     physicalStore: String?, isInternal: Bool) -> [String] {
-        let physicalWhole = physicalWholeDisk(from: physicalStore)
-        let parentWhole = physicalWholeDisk(from: parentWholeDisk)
-        let bsdWhole = physicalWholeDisk(from: bsdName)
-        let raw = isInternal
-            ? [physicalWhole, parentWhole, bsdWhole, bsdName]
-            : [bsdName, parentWhole, physicalWhole, bsdWhole]
-        var seen = Set<String>()
-        return raw.compactMap { $0 }.filter { seen.insert($0).inserted }
-    }
-
-    private static func physicalWholeDisk(from identifier: String?) -> String? {
-        guard let identifier, !identifier.isEmpty else { return nil }
-        let trimmed = identifier.replacingOccurrences(of: "/dev/", with: "")
-        guard trimmed.hasPrefix("disk") else { return nil }
-        var index = trimmed.index(trimmed.startIndex, offsetBy: 4)
-        let numberStart = index
-        while index < trimmed.endIndex, trimmed[index].isNumber {
-            index = trimmed.index(after: index)
-        }
-        guard index > numberStart else { return nil }
-        return String(trimmed[..<index])
-    }
-
-    private static func runDiskutilInfo(_ mountPath: String) -> [String: Any]? {
-        let result = BoundedProcessRunner.run(
-            "/usr/sbin/diskutil", ["info", "-plist", mountPath],
-            timeout: 5, maxOutputBytes: 1024 * 1024)
-        guard result.status == 0 else { return nil }
-        var format = PropertyListSerialization.PropertyListFormat.xml
-        guard let plist = try? PropertyListSerialization.propertyList(from: result.output,
-                                                                      options: [],
-                                                                      format: &format),
-              let dict = plist as? [String: Any] else { return nil }
-        return dict
-    }
-
-    static func readCounters() -> [String: DiskIOCounters] {
-        var counters = readBlockStorageCounters()
-        for (key, value) in readMediaCounters() where counters[key] == nil {
+    static func readCounters(isCurrent: () -> Bool = { true }) -> [String: DiskIOCounters] {
+        guard isCurrent() else { return [:] }
+        var counters = readBlockStorageCounters(isCurrent: isCurrent)
+        guard isCurrent() else { return counters }
+        for (key, value) in readMediaCounters(isCurrent: isCurrent) where counters[key] == nil {
             counters[key] = value
         }
         return counters
     }
 
-    private static func readBlockStorageCounters() -> [String: DiskIOCounters] {
+    private static func readBlockStorageCounters(isCurrent: () -> Bool) -> [String: DiskIOCounters] {
         var iterator = io_iterator_t()
-        guard IOServiceGetMatchingServices(kIOMainPortDefault,
-                                           IOServiceMatching("IOBlockStorageDriver"),
-                                           &iterator) == kIOReturnSuccess else { return [:] }
+        guard isCurrent() else { return [:] }
+        let matching = IOServiceMatching("IOBlockStorageDriver")
+        guard isCurrent(), IOServiceGetMatchingServices(kIOMainPortDefault,
+                                           matching, &iterator) == kIOReturnSuccess else { return [:] }
         defer { IOObjectRelease(iterator) }
 
         var result: [String: DiskIOCounters] = [:]
-        var service = IOIteratorNext(iterator)
-        while service != 0 {
-            if let bsdName = wholeDiskBSDName(descendingFrom: service),
-               let stats = property("Statistics", from: service) as? [String: Any] {
+        while isCurrent() {
+            let service = IOIteratorNext(iterator)
+            guard service != 0 else { break }
+            defer { IOObjectRelease(service) }
+            if isCurrent(), let bsdName = wholeDiskBSDName(descendingFrom: service, isCurrent: isCurrent),
+               isCurrent(), let stats = property("Statistics", from: service) as? [String: Any] {
                 result[bsdName] = DiskIOCounters(read: DiskSupport.uint(stats["Bytes (Read)"]) ?? 0,
                                                  written: DiskSupport.uint(stats["Bytes (Write)"]) ?? 0)
             }
-            IOObjectRelease(service)
-            service = IOIteratorNext(iterator)
         }
         return result
     }
 
-    private static func readMediaCounters() -> [String: DiskIOCounters] {
+    private static func readMediaCounters(isCurrent: () -> Bool) -> [String: DiskIOCounters] {
         var iterator = io_iterator_t()
-        guard IOServiceGetMatchingServices(kIOMainPortDefault,
-                                           IOServiceMatching("IOMedia"),
-                                           &iterator) == kIOReturnSuccess else { return [:] }
+        guard isCurrent() else { return [:] }
+        let matching = IOServiceMatching("IOMedia")
+        guard isCurrent(), IOServiceGetMatchingServices(kIOMainPortDefault,
+                                           matching, &iterator) == kIOReturnSuccess else { return [:] }
         defer { IOObjectRelease(iterator) }
 
         var result: [String: DiskIOCounters] = [:]
-        var media = IOIteratorNext(iterator)
-        while media != 0 {
-            if let bsdName = property("BSD Name", from: media) as? String,
-               let stats = property("Statistics", from: media) as? [String: Any],
+        while isCurrent() {
+            let media = IOIteratorNext(iterator)
+            guard media != 0 else { break }
+            defer { IOObjectRelease(media) }
+            if isCurrent(), let bsdName = property("BSD Name", from: media) as? String,
+               isCurrent(), let stats = property("Statistics", from: media) as? [String: Any],
                let counters = counters(from: stats) {
                 result[bsdName] = counters
             }
-            IOObjectRelease(media)
-            media = IOIteratorNext(iterator)
         }
         return result
     }
@@ -432,27 +381,28 @@ final class DiskSampler {
         return DiskIOCounters(read: read ?? 0, written: written ?? 0)
     }
 
-    private static func wholeDiskBSDName(descendingFrom entry: io_registry_entry_t) -> String? {
+    private static func wholeDiskBSDName(descendingFrom entry: io_registry_entry_t,
+                                         isCurrent: () -> Bool) -> String? {
+        guard isCurrent() else { return nil }
         if let whole = property("Whole", from: entry) as? Bool,
-           whole,
+           whole, isCurrent(),
            let name = property("BSD Name", from: entry) as? String {
             return name
         }
 
         var iterator = io_iterator_t()
-        guard IORegistryEntryGetChildIterator(entry, kIOServicePlane, &iterator) == kIOReturnSuccess else {
+        guard isCurrent(), IORegistryEntryGetChildIterator(entry, kIOServicePlane, &iterator) == kIOReturnSuccess else {
             return nil
         }
         defer { IOObjectRelease(iterator) }
 
-        var child = IOIteratorNext(iterator)
-        while child != 0 {
-            if let name = wholeDiskBSDName(descendingFrom: child) {
-                IOObjectRelease(child)
+        while isCurrent() {
+            let child = IOIteratorNext(iterator)
+            guard child != 0 else { break }
+            defer { IOObjectRelease(child) }
+            if let name = wholeDiskBSDName(descendingFrom: child, isCurrent: isCurrent) {
                 return name
             }
-            IOObjectRelease(child)
-            child = IOIteratorNext(iterator)
         }
         return nil
     }
