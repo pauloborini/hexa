@@ -35,6 +35,13 @@ enum MenuBarHidingRehideDelay: String, CaseIterable {
     }
 }
 
+/// What one click or key means while the hidden section is open.
+enum MenuBarHidingRevealDecision: Equatable {
+    case hide
+    case restart
+    case ignore
+}
+
 /// One status item another app owns. Accessibility exposes no title or
 /// identifier for these, so the owning bundle and the frame are all there is.
 struct MenuBarHidingInventoryItem: Equatable {
@@ -112,11 +119,46 @@ enum MenuBarHidingEngineKind: Equatable {
     }
 }
 
+/// Everything the toggle status item shows for one state.
+struct MenuBarHidingTogglePresentation: Equatable {
+    let symbol: String
+    let toolTip: String
+    let accessibilityDescription: String
+}
+
 /// The menu bar's own geometry, kept apart from the status items so it can be
 /// measured without a bar.
 enum MenuBarHidingSupport {
     static func toggleSymbol(collapsed: Bool) -> String {
         collapsed ? "chevron.left" : "chevron.right"
+    }
+
+    /// The failure reason belongs on the control the person just used, not
+    /// only on the module page. Normal states carry the module title.
+    static func togglePresentation(collapsed: Bool,
+                                   unavailableReason: String?,
+                                   title: String) -> MenuBarHidingTogglePresentation {
+        let symbol = toggleSymbol(collapsed: collapsed)
+        guard let reason = unavailableReason, !reason.isEmpty else {
+            return MenuBarHidingTogglePresentation(symbol: symbol,
+                                                   toolTip: title,
+                                                   accessibilityDescription: title)
+        }
+        return MenuBarHidingTogglePresentation(symbol: symbol,
+                                               toolTip: reason,
+                                               accessibilityDescription: "\(title): \(reason)")
+    }
+
+    static func revealDecision(isKey: Bool,
+                               keyCode: UInt16,
+                               isInMenuBar: Bool) -> MenuBarHidingRevealDecision {
+        if isKey {
+            return keyCode == 53 ? .hide : .ignore
+        }
+        if isInMenuBar {
+            return .restart
+        }
+        return .hide
     }
 
     static func isDeveloperIDCertificateSubject(_ subject: String?) -> Bool {

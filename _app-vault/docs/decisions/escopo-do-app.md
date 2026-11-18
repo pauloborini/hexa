@@ -153,10 +153,14 @@ Decisão do operador em 2026-11-07.
 
 ### DEC-041 — Fronteira dos ícones ocultos na menu bar
 
-Com "Ícones da menu bar" ligado, o chevron fica visível e acionável como fronteira: itens de outros apps à esquerda pertencem à seção oculta; itens à direita ficam sempre visíveis. Os itens do próprio macOS (Central de Controle, Tocando Agora, relógio e demais itens do sistema) ficam sempre visíveis, de qualquer lado do chevron. O módulo inicia recolhido. Um clique no chevron revela temporariamente os itens ocultos; outro clique recolhe imediatamente. O prazo de recolhimento é configurável como Instantâneo, 5 segundos (padrão) ou 10 segundos. Instantâneo recolhe ao terminar a interação: clique fora da menu bar ou Escape. Desligar o módulo libera todos os itens. Itens cuja identidade ou posição não puder ser lida permanecem visíveis para evitar ocultar algo que o usuário não classificou.
+Com "Ícones da menu bar" ligado, o chevron fica visível e acionável como fronteira: itens de outros apps à esquerda pertencem à seção oculta; itens à direita ficam sempre visíveis. Os itens do próprio macOS (Central de Controle, Tocando Agora, relógio e demais itens do sistema) ficam sempre visíveis, de qualquer lado do chevron. O módulo inicia recolhido. Um clique no chevron revela temporariamente os itens ocultos; outro clique recolhe imediatamente. O prazo de recolhimento é configurável como Instantâneo, 5 segundos (padrão) ou 10 segundos. Em todos os modos, clique fora da menu bar ou Escape recolhe imediatamente. Nos modos de 5 ou 10 segundos, o prazo é máximo desde a última interação na menu bar; clicar na barra reinicia a contagem. Instantâneo não mantém contagem e recolhe ao terminar a interação. Desligar o módulo libera todos os itens. Itens de apps cuja leitura falhou permanecem visíveis para evitar ocultar algo que o usuário não classificou. Um app que inicia com a seção recolhida entra na seção oculta por padrão, mesmo antes de a posição do seu item ser lida; a promoção para a seção visível é manual.
 
 _Alterado 2026-11-09 — era: seção sempre oculta separada, com prazo temporário genérico. Motivo: remover “Sempre invisível” da v1, preservar seus itens na seção oculta comum e oferecer prazos de recolhimento explícitos._
 
 _Alterado 2026-11-09 — era: só os itens à direita do chevron ficavam sempre visíveis, sem exceção para os itens do macOS. Motivo: a restrição do macOS 27 escondia o Tocando Agora da Central de Controle junto com os ícones ocultos (ISSUE-936)._
+
+_Alterado 2026-11-17 — era: itens cuja identidade ou posição não puder ser lida permanecem visíveis, sem cláusula para o app recém-iniciado. Motivo: o operador confirmou que app novo lançado com a seção recolhida nasce oculto por padrão e só passa à seção visível por ação manual._
+
+_Alterado 2026-11-17 — era: clique fora encerrava somente o modo Instantâneo; os modos de 5 ou 10 segundos aguardavam o prazo. Motivo: o operador confirmou o recolhimento por clique fora também nos modos temporizados, com prazo máximo reiniciado pela interação na barra._
 
 Decisão do operador em 2026-11-08.

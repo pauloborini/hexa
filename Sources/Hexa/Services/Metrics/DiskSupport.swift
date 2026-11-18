@@ -105,8 +105,7 @@ enum DiskSupport {
     static let nvmeDataUnitBytes: UInt64 = 512_000
 
     /// Short user-facing label for a volume format. `type` is the mount table
-    /// token (statfs f_fstypename / diskutil FilesystemType); `name` is the
-    /// verbose diskutil FilesystemName, used only to tell FAT widths apart.
+    /// token from statfs; `name` is used only to tell FAT widths apart.
     static func fileSystemLabel(type: String?, name: String? = nil) -> String? {
         guard let type = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !type.isEmpty else { return nil }
@@ -133,46 +132,9 @@ enum DiskSupport {
         }
     }
 
-    static func nvmeBytes(low: UInt64?, high: UInt64?) -> UInt64? {
-        guard let low else { return nil }
-        let high = high ?? 0
-        guard high <= UInt64(UInt32.max) else { return nil }
-        let units = low.addingReportingOverflow(high << 32)
-        guard !units.overflow else { return nil }
-        let bytes = units.partialValue.multipliedReportingOverflow(by: nvmeDataUnitBytes)
-        return bytes.overflow ? nil : bytes.partialValue
-    }
-
-    static func celsius(fromSMARTTemperature raw: UInt64?) -> Double? {
-        guard let raw else { return nil }
-        let value = Double(raw)
-        if value > 150 {
-            let celsius = value - 273.15
-            return (-40...125).contains(celsius) ? celsius : nil
-        }
-        return (1...125).contains(value) ? value : nil
-    }
-
     static func healthPercent(fromPercentageUsed used: UInt64?) -> Int? {
         guard let used else { return nil }
         return max(0, min(100, 100 - Int(clamping: used)))
-    }
-
-    static func smartReading(status: String?, vendorKeys: [String: Any]?) -> DiskSMARTReading? {
-        let keys = vendorKeys ?? [:]
-        var reading = DiskSMARTReading()
-        reading.status = status?.isEmpty == false ? status : nil
-        reading.totalReadBytes = nvmeBytes(low: uint(keys["DATA_UNITS_READ_0"]),
-                                           high: uint(keys["DATA_UNITS_READ_1"]))
-        reading.totalWrittenBytes = nvmeBytes(low: uint(keys["DATA_UNITS_WRITTEN_0"]),
-                                              high: uint(keys["DATA_UNITS_WRITTEN_1"]))
-        reading.temperatureCelsius = celsius(fromSMARTTemperature: uint(keys["TEMPERATURE"]))
-        reading.healthPercent = healthPercent(fromPercentageUsed: uint(keys["PERCENTAGE_USED"]))
-        reading.powerCycles = uint(keys["POWER_CYCLES_0"])
-        reading.powerOnHours = uint(keys["POWER_ON_HOURS_0"])
-        reading.unsafeShutdowns = uint(keys["UNSAFE_SHUTDOWNS_0"])
-        reading.mediaErrors = uint(keys["MEDIA_ERRORS_0"])
-        return reading.hasDetails ? reading : nil
     }
 
     static func uint(_ value: Any?) -> UInt64? {

@@ -65,6 +65,50 @@ final class MenuBarHidingTests: XCTestCase {
         XCTAssertEqual(MenuBarHidingRehideDelay.tenSeconds.seconds, 10)
     }
 
+    func testTogglePresentationCarriesTheUnavailableReason() {
+        let normal = MenuBarHidingSupport.togglePresentation(
+            collapsed: true, unavailableReason: nil, title: "Ícones")
+        XCTAssertEqual(normal.symbol, "chevron.left")
+        XCTAssertEqual(normal.toolTip, "Ícones")
+        XCTAssertEqual(normal.accessibilityDescription, "Ícones")
+
+        let failed = MenuBarHidingSupport.togglePresentation(
+            collapsed: false, unavailableReason: "Sem acesso", title: "Ícones")
+        XCTAssertEqual(failed.symbol, "chevron.right")
+        XCTAssertEqual(failed.toolTip, "Sem acesso")
+        XCTAssertEqual(failed.accessibilityDescription, "Ícones: Sem acesso")
+    }
+
+    func testRevealDecisionClosesOutsideTheMenuBar() {
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: true, keyCode: 53, isInMenuBar: false), .hide)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: true, keyCode: 0, isInMenuBar: false), .ignore)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: false, keyCode: 0, isInMenuBar: true), .restart)
+        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
+            isKey: false, keyCode: 0, isInMenuBar: false), .hide)
+    }
+
+    func testMenuBarHidingShortcutRole() {
+        let role = GlobalShortcutRole.menuBarHiding
+        XCTAssertEqual(role.storageKey, DefaultsKey.menuBarHidingShortcut)
+        XCTAssertEqual(role.defaultShortcut, .menuBarHidingDefault)
+        XCTAssertEqual(role.requiredEnableKeys, [DefaultsKey.menuBarHidingEnabled])
+        XCTAssertEqual(role.feature, .menuBarHiding)
+        XCTAssertEqual(role.group, .tools)
+        XCTAssertTrue(GlobalShortcutRole.availableRoles(isAvailable: { _ in true }).contains(role))
+    }
+
+    func testTheRehideLabelsArePresentInEveryLanguage() {
+        for language in AppLanguage.allCases {
+            let text = FeatureStrings.menuBarHiding(language)
+            XCTAssertFalse(text.rehideFiveSeconds.isEmpty, "\(language)")
+            XCTAssertFalse(text.rehideTenSeconds.isEmpty, "\(language)")
+            XCTAssertNotEqual(text.rehideFiveSeconds, text.rehideTenSeconds, "\(language)")
+        }
+    }
+
     func testLegacyPreferenceMigrationKeepsTheModuleEnabled() {
         let domain = "MenuBarHidingTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: domain)!
