@@ -422,7 +422,9 @@ final class JunkCleaner: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard !cancellation.isCancelled else { return }
-            let installed = Self.installedBundleIDs()
+            let installed = Self.installedBundleIDs(cancellation: cancellation)
+            guard !cancellation.isCancelled else { return }
+            let ownership = OwnershipDiscovery(installed: installed)
             // A path claimed by the leftover scan must not reappear under
             // caches or logs: one path, one row, one decision.
             var claimed = Set<String>()
@@ -431,11 +433,11 @@ final class JunkCleaner: ObservableObject {
             var browserResults: [BrowserJunk.BrowserScanResult]?
             let categories: [(CleanerSupport.Category, () -> [Item])] = [
                 (.leftovers, {
-                    let found = Self.scanLeftovers(installed: installed, home: home)
+                    let found = Self.scanLeftovers(ownership: ownership, home: home, cancellation: cancellation)
                     claimed.formUnion(found.map { $0.url.standardizedFileURL.path })
                     return found
                 }),
-                (.loginItems, { Self.scanOrphanedLaunchPlists(installed: installed) }),
+                (.loginItems, { Self.scanOrphanedLaunchPlists(ownership: ownership, cancellation: cancellation) }),
                 (.browserCaches, {
                     let results = BrowserJunk.scanItems(home: home)
                     browserResults = results
@@ -490,13 +492,14 @@ final class JunkCleaner: ObservableObject {
                     self.scanningCategory = category
                 }
                 let found = run()
+                guard !cancellation.isCancelled else { return }
                 DispatchQueue.main.async { [weak self] in
-                    guard let self, self.scanToken == token else { return }
+                    guard let self, self.scanToken == token, !cancellation.isCancelled else { return }
                     self.items.append(contentsOf: found)
                 }
             }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.scanToken == token else { return }
+                guard let self, self.scanToken == token, !cancellation.isCancelled else { return }
                 self.scanCancellation = nil
                 self.scanningCategory = nil
                 self.phase = .results
@@ -579,8 +582,9 @@ final class JunkCleaner: ObservableObject {
             // can install an app mid-clean that this pass would have to
             // respect. `stubborn` is a subset of `chosen`, so the second and
             // third passes are covered by the same test.
-            let installed = chosen.contains { $0.category == .leftovers }
-                ? Self.installedBundleIDs() : []
+            let hasLeftovers = chosen.contains { $0.category == .leftovers }
+            let installed = hasLeftovers ? Self.installedBundleIDs() : []
+            let ownership = hasLeftovers ? CleanerSupport.OwnershipIndex(installed: installed) : nil
             var outcomes: [CleanerSupport.RemovalOutcome] = []
             // Each stubborn item keeps the reason it failed its first move,
             // so the reason survives into `failedItems` if it stays behind.
@@ -634,7 +638,7 @@ final class JunkCleaner: ObservableObject {
                 // An abort stops before the next item.
                 guard !cancellation.isCancelled else { return }
                 if item.category == .browserCaches || item.category == .browserSiteData {
-                    guard Self.mayRemove(item, installed: installed) else {
+                    guard Self.mayRemove(item, ownership: ownership) else {
                         outcomes.append(.failed)
                         failures.append(FailedItem(url: item.url, category: item.category,
                                                    reason: "refused by the safety guard"))
@@ -651,7 +655,7 @@ final class JunkCleaner: ObservableObject {
                 if item.category == .codingConversations {
                     // A refusal by the safety guard is reported as a refusal;
                     // only a move that started and failed is "not fully moved".
-                    guard Self.mayRemove(item, installed: installed) else {
+                    guard Self.mayRemove(item, ownership: ownership) else {
                         outcomes.append(.failed)
                         failures.append(FailedItem(url: item.url, category: item.category,
                                                    reason: "refused by the safety guard"))
@@ -665,7 +669,7 @@ final class JunkCleaner: ObservableObject {
                     }
                     continue
                 }
-                guard Self.mayRemove(item, installed: installed) else {
+                guard Self.mayRemove(item, ownership: ownership) else {
                     outcomes.append(.failed)
                     failures.append(FailedItem(url: item.url, category: item.category,
                                                reason: "refused by the safety guard"))
@@ -675,7 +679,7 @@ final class JunkCleaner: ObservableObject {
                     // Retire the job first so nothing keeps running from a
                     // plist that is about to leave; then the regular move.
                     Self.bootoutUserAgent(item.url)
-                    guard Self.mayRemove(item, installed: installed) else {
+                    guard Self.mayRemove(item, ownership: ownership) else {
                         outcomes.append(.failed)
                         failures.append(FailedItem(url: item.url, category: item.category,
                                                    reason: "refused by the safety guard"))
@@ -704,7 +708,7 @@ final class JunkCleaner: ObservableObject {
             } else if !stubborn.isEmpty {
                 // An aborted pass never starts the administrator step.
                 guard !cancellation.isCancelled else { return }
-                let stillSafe = stubborn.filter { Self.mayRemove($0.item, installed: installed) }
+                let stillSafe = stubborn.filter { Self.mayRemove($0.item, ownership: ownership) }
                 let refused = stubborn.filter { entry in
                     !stillSafe.contains(where: { $0.item.id == entry.item.id })
                 }
@@ -745,7 +749,7 @@ final class JunkCleaner: ObservableObject {
     /// Exact match guard against ever removing a critical root, even if a
     /// scanner bug produced one. Items are already scoped by construction;
     /// this is the last line of defense.
-    static func mayRemove(_ item: Item, installed: Set<String> = []) -> Bool {
+    static func mayRemove(_ item: Item, ownership: CleanerSupport.OwnershipIndex? = nil) -> Bool {
         let url = item.url
         let path = url.standardizedFileURL.path
         let home = NSHomeDirectory()
@@ -767,7 +771,7 @@ final class JunkCleaner: ObservableObject {
             guard isDirectLeftoverRootChild(url),
                   CleanerSupport.bundleIDCandidate(fromEntryName: item.detail) != nil,
                   !CleanerSupport.isProtectedBundleID(item.detail),
-                  !hasLivingOwner(item.detail, installed: installed) else { return false }
+                  !hasLivingOwner(item.detail, ownership: ownership) else { return false }
 
         case .caches:
             let cachesRoot = URL(fileURLWithPath: home + "/Library/Caches", isDirectory: true)
@@ -859,7 +863,7 @@ final class JunkCleaner: ObservableObject {
     /// Moves each validated browser target to the Trash using the provided closure.
     static func trashBrowserTargets(_ item: Item,
                                     trash: (URL) throws -> Void = JunkCleaner.trashRunner) -> [CleanerSupport.RemovalOutcome] {
-        guard mayRemove(item, installed: []) else { return [.failed] }
+        guard mayRemove(item) else { return [.failed] }
         let fm = FileManager.default
         var outcomes: [CleanerSupport.RemovalOutcome] = []
 
@@ -883,7 +887,7 @@ final class JunkCleaner: ObservableObject {
     /// Each part is counted at the size it had when it moved, so a pair that
     /// only half moved reports exactly that half. Nothing is deleted in place.
     private static func trashConversation(_ item: Item) -> [CleanerSupport.RemovalOutcome] {
-        guard mayRemove(item, installed: []) else { return [.failed] }
+        guard mayRemove(item) else { return [.failed] }
         let fm = FileManager.default
         var outcomes: [CleanerSupport.RemovalOutcome] = []
         var trashedFolder: (original: URL, inTrash: URL)?
@@ -1029,7 +1033,7 @@ final class JunkCleaner: ObservableObject {
     /// alive: apps found in the application folders (three levels deep,
     /// covering subfolders and suites), everything currently running, and
     /// login item helpers nested inside those apps.
-    private static func installedBundleIDs() -> Set<String> {
+    private static func installedBundleIDs(cancellation: CleanerSupport.ScanCancellation? = nil) -> Set<String> {
         var ids = Set<String>()
         let fm = FileManager.default
         let roots = ["/Applications", "/System/Applications",
@@ -1042,14 +1046,16 @@ final class JunkCleaner: ObservableObject {
         }
 
         func collect(at url: URL, depth: Int) {
-            guard depth > 0 else { return }
+            guard depth > 0, cancellation?.isCancelled != true else { return }
             let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
             guard let entries = try? fm.contentsOfDirectory(at: url,
                                                             includingPropertiesForKeys: Array(keys),
                                                             options: [.skipsHiddenFiles]) else { return }
             for entry in entries {
+                guard cancellation?.isCancelled != true else { return }
                 let values = try? entry.resourceValues(forKeys: keys)
                 guard values?.isSymbolicLink != true, values?.isDirectory == true else { continue }
+                guard cancellation?.isCancelled != true else { return }
                 if entry.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
                     remember(app: entry)
                     collect(at: entry.appendingPathComponent("Contents/Library/LoginItems"), depth: 1)
@@ -1060,9 +1066,12 @@ final class JunkCleaner: ObservableObject {
         }
 
         for root in roots {
+            guard cancellation?.isCancelled != true else { return [] }
             collect(at: URL(fileURLWithPath: root), depth: 3)
         }
+        guard cancellation?.isCancelled != true else { return [] }
         for app in NSWorkspace.shared.runningApplications {
+            guard cancellation?.isCancelled != true else { return [] }
             if let id = app.bundleIdentifier { ids.insert(id.lowercased()) }
             if let url = app.bundleURL { remember(app: url) }
         }
@@ -1073,14 +1082,30 @@ final class JunkCleaner: ObservableObject {
     /// the collected set (family match), the vendor namespace rule (suites
     /// and updaters share a namespace with sibling identifiers), and Launch
     /// Services, which knows apps registered anywhere on disk.
+    final class OwnershipDiscovery {
+        let index: CleanerSupport.OwnershipIndex
+        private var registrations: [String: Bool] = [:]
+
+        init(installed: Set<String>) {
+            index = CleanerSupport.OwnershipIndex(installed: installed)
+        }
+
+        func hasLivingOwner(_ candidate: String, isRegistered: (String) -> Bool) -> Bool {
+            JunkCleaner.hasLivingOwner(candidate, ownership: index) { candidate in
+                if let registered = registrations[candidate] { return registered }
+                let registered = isRegistered(candidate)
+                registrations[candidate] = registered
+                return registered
+            }
+        }
+    }
+
     private static func hasLivingOwner(
         _ candidate: String,
-        installed: Set<String>,
+        ownership: CleanerSupport.OwnershipIndex?,
         isRegistered: (String) -> Bool = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
     ) -> Bool {
-        if CleanerSupport.isOwned(candidate: candidate, byInstalled: installed) { return true }
-        if CleanerSupport.sharesVendorNamespace(candidate: candidate, withInstalled: installed) { return true }
-        return isRegistered(candidate)
+        ownership?.isOwned(candidate) == true || ownership?.sharesVendorNamespace(candidate) == true || isRegistered(candidate)
     }
 
     // MARK: - Category scanners
@@ -1147,6 +1172,19 @@ final class JunkCleaner: ObservableObject {
         installed: Set<String>,
         home: String = NSHomeDirectory(),
         includeSystemLibrary: Bool = true,
+        cancellation: CleanerSupport.ScanCancellation? = nil,
+        isRegistered: (String) -> Bool = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+    ) -> [Item] {
+        scanLeftovers(ownership: OwnershipDiscovery(installed: installed), home: home,
+                      includeSystemLibrary: includeSystemLibrary, cancellation: cancellation,
+                      isRegistered: isRegistered)
+    }
+
+    private static func scanLeftovers(
+        ownership: OwnershipDiscovery,
+        home: String = NSHomeDirectory(),
+        includeSystemLibrary: Bool = true,
+        cancellation: CleanerSupport.ScanCancellation? = nil,
         isRegistered: (String) -> Bool = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
     ) -> [Item] {
         let fm = FileManager.default
@@ -1157,44 +1195,53 @@ final class JunkCleaner: ObservableObject {
         var found: [Item] = []
         for library in libraries {
             for root in leftoverRoots {
+                guard cancellation?.isCancelled != true else { return [] }
                 let dir = library + "/" + root.path
                 appendLeftovers(in: dir,
                                 usesContainerMetadata: root.usesContainerMetadata,
-                                installed: installed,
+                                ownership: ownership,
                                 isRegistered: isRegistered,
+                                cancellation: cancellation,
                                 fm: fm,
                                 into: &found)
             }
         }
+        guard cancellation?.isCancelled != true else { return [] }
         appendLeftovers(in: home + "/Library/Mobile Documents",
                         usesContainerMetadata: false,
-                        installed: installed,
+                        ownership: ownership,
                         isRegistered: isRegistered,
+                        cancellation: cancellation,
                         fm: fm,
                         into: &found,
                         ownerFrom: { entry, _ in
                             CleanerSupport.iCloudContainerOwner(fromEntryName: entry)
                         })
+        guard cancellation?.isCancelled != true else { return [] }
         return sorted(found)
     }
 
     private static func appendLeftovers(in dir: String,
                                         usesContainerMetadata: Bool,
-                                        installed: Set<String>,
+                                        ownership: OwnershipDiscovery,
                                         isRegistered: (String) -> Bool,
+                                        cancellation: CleanerSupport.ScanCancellation?,
                                         fm: FileManager,
                                         into found: inout [Item],
                                         ownerFrom: ((String, URL) -> String?)? = nil) {
+        guard cancellation?.isCancelled != true else { return }
         let root = URL(fileURLWithPath: dir, isDirectory: true)
         let keys: Set<URLResourceKey> = [.isSymbolicLinkKey]
         guard let entries = try? fm.contentsOfDirectory(at: root,
                                                         includingPropertiesForKeys: Array(keys),
                                                         options: []) else { return }
         for url in entries {
+            guard cancellation?.isCancelled != true else { return }
             let entry = url.lastPathComponent
             guard !entry.hasPrefix(".") else { continue }
             let values = try? url.resourceValues(forKeys: keys)
             guard values?.isSymbolicLink != true else { continue }
+            guard cancellation?.isCancelled != true else { return }
             // A custom reader that declines a name must not fall through to the
             // Library parser. Mobile Documents only accepts its own name forms.
             let owner: String?
@@ -1204,13 +1251,17 @@ final class JunkCleaner: ObservableObject {
                 owner = leftoverOwner(entry: entry, url: url,
                                       usesContainerMetadata: usesContainerMetadata)
             }
+            guard cancellation?.isCancelled != true else { return }
             if let owner {
                 if CleanerSupport.isProtectedBundleID(owner)
-                    || hasLivingOwner(owner, installed: installed, isRegistered: isRegistered) {
+                    || ownership.hasLivingOwner(owner, isRegistered: isRegistered) {
                     continue
                 }
+                guard cancellation?.isCancelled != true else { return }
+                let size = directorySize(of: url, fm: fm, cancellation: cancellation)
+                guard cancellation?.isCancelled != true else { return }
                 found.append(Item(url: url, category: .leftovers,
-                                  size: directorySize(of: url, fm: fm),
+                                  size: size,
                                   detail: owner,
                                   recommended: CleanerPolicy.precheckLeftovers))
             }
@@ -1242,18 +1293,23 @@ final class JunkCleaner: ObservableObject {
     /// Launch agents and daemons whose every referenced executable is gone
     /// and whose label has no living owner: the classic ghost that keeps a
     /// deleted app listed under Login Items and Extensions.
-    private static func scanOrphanedLaunchPlists(installed: Set<String>) -> [Item] {
+    private static func scanOrphanedLaunchPlists(ownership: OwnershipDiscovery,
+                                                  cancellation: CleanerSupport.ScanCancellation?) -> [Item] {
         let fm = FileManager.default
         let roots = [NSHomeDirectory() + "/Library/LaunchAgents",
                      "/Library/LaunchAgents",
                      "/Library/LaunchDaemons"]
         var found: [Item] = []
         for root in roots {
+            guard cancellation?.isCancelled != true else { return [] }
             guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }
             for entry in entries where entry.hasSuffix(".plist") {
+                guard cancellation?.isCancelled != true else { return [] }
                 let url = URL(fileURLWithPath: root).appendingPathComponent(entry)
                 guard !UninstallerSupport.isSymbolicLink(url) else { continue }
+                guard cancellation?.isCancelled != true else { return [] }
                 guard let plist = NSDictionary(contentsOfFile: url.path) as? [String: Any] else { continue }
+                guard cancellation?.isCancelled != true else { return [] }
                 let label = plist["Label"] as? String
                 let executables = CleanerSupport.executablePaths(inLaunchPlist: plist)
                 guard CleanerSupport.launchPlistIsRemovableOrphan(
@@ -1265,7 +1321,11 @@ final class JunkCleaner: ObservableObject {
                     executableExists: { $0.hasPrefix("/Volumes/") || fm.fileExists(atPath: $0) }) else { continue }
                 // Second signal: the label itself must not belong to anything
                 // installed either (a moved binary is not an uninstalled app).
-                if let label, hasLivingOwner(label, installed: installed) { continue }
+                guard cancellation?.isCancelled != true else { return [] }
+                if let label, ownership.hasLivingOwner(label, isRegistered: {
+                    NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
+                }) { continue }
+                guard cancellation?.isCancelled != true else { return [] }
                 found.append(Item(url: url, category: .loginItems,
                                   size: directorySize(of: url, fm: fm),
                                   detail: label ?? entry,
@@ -1653,22 +1713,26 @@ final class JunkCleaner: ObservableObject {
 
     static func directorySize(of url: URL, fm: FileManager,
                               cancellation: CleanerSupport.ScanCancellation? = nil) -> Int64 {
+        guard cancellation?.isCancelled != true else { return 0 }
         if UninstallerSupport.isSymbolicLink(url) { return 0 }
         guard cancellation?.isCancelled != true else { return 0 }
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return 0 }
+        guard cancellation?.isCancelled != true else { return 0 }
         if !isDir.boolValue { return fileSize(url) }
         var total: Int64 = 0
         if let enumerator = fm.enumerator(at: url,
                                           includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey],
                                           options: [], errorHandler: nil) {
-            for case let item as URL in enumerator {
+            while cancellation?.isCancelled != true,
+                  let item = enumerator.nextObject() as? URL {
                 autoreleasepool { }
                 guard cancellation?.isCancelled != true else { break }
                 if UninstallerSupport.isSymbolicLink(item) {
                     enumerator.skipDescendants()
                     continue
                 }
+                guard cancellation?.isCancelled != true else { break }
                 total += fileSize(item)
             }
         }

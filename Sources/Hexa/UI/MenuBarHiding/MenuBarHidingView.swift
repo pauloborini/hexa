@@ -42,14 +42,30 @@ struct MenuBarHidingView: View {
                         Picker(text.rehideDelayTitle, selection: $rehideDelay) {
                             Text(text.rehideInstant)
                                 .tag(MenuBarHidingRehideDelay.instant.rawValue)
-                            Text(l10n.s.monitorInterval5)
+                            Text(text.rehideFiveSeconds)
                                 .tag(MenuBarHidingRehideDelay.fiveSeconds.rawValue)
-                            Text(l10n.s.monitorInterval5.replacingOccurrences(of: "5", with: "10"))
+                            Text(text.rehideTenSeconds)
                                 .tag(MenuBarHidingRehideDelay.tenSeconds.rawValue)
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
                         .fixedSize()
+                    }
+                    HairlineDivider()
+                    ShortcutPreferenceRow(
+                        role: .menuBarHiding,
+                        isEnabled: enabled,
+                        label: text.toggleShortcutTitle,
+                        symbolName: GlobalShortcutRole.menuBarHiding.feature.symbolName,
+                        statusText: enabled ? FeatureStrings.shortcuts(l10n.language).active
+                            : FeatureStrings.shortcuts(l10n.language).inactive,
+                        statusIsActive: enabled,
+                        onChange: { MenuBarHidingService.shared.syncWithPreferences() }
+                    )
+                    Text(text.toggleShortcutCaption)
+                        .hexaCaption()
+                    if service.shortcutRegistrationFailed {
+                        HexaStatusNote(message: text.shortcutUnavailable)
                     }
                 }
             }
@@ -81,6 +97,9 @@ struct MenuBarHidingView: View {
         }
         .onChange(of: permissions.accessibility) { _, granted in
             if granted, enabled { MenuBarHidingService.shared.hide() }
+        }
+        .onChange(of: rehideDelay) { _, _ in
+            MenuBarHidingService.shared.rehideDelayDidChange()
         }
     }
 

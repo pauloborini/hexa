@@ -123,6 +123,8 @@ struct GlobalShortcut: Equatable, Hashable {
 
     static let keepAwakeDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_K),
                                                  modifiers: [.control, .option, .command])
+    static let menuBarHidingDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_M),
+                                                     modifiers: [.control, .option, .command])
     static let displayBrightnessDecreaseDefault = GlobalShortcut(
         keyCode: Int64(kVK_ANSI_Minus), modifiers: [.shift, .command])
     static let displayBrightnessIncreaseDefault = GlobalShortcut(
@@ -663,6 +665,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     case displayBrightnessIncrease
     case keyboardBrightnessDecrease
     case keyboardBrightnessIncrease
+    case menuBarHiding
 
     var id: String { storageKey }
 
@@ -679,6 +682,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .displayBrightnessIncrease: return DefaultsKey.displayBrightnessIncreaseShortcut
         case .keyboardBrightnessDecrease: return DefaultsKey.keyboardBrightnessDecreaseShortcut
         case .keyboardBrightnessIncrease: return DefaultsKey.keyboardBrightnessIncreaseShortcut
+        case .menuBarHiding: return DefaultsKey.menuBarHidingShortcut
         }
     }
 
@@ -695,6 +699,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         case .displayBrightnessIncrease: return .displayBrightnessIncreaseDefault
         case .keyboardBrightnessDecrease: return .keyboardBrightnessDecreaseDefault
         case .keyboardBrightnessIncrease: return .keyboardBrightnessIncreaseDefault
+        case .menuBarHiding: return .menuBarHidingDefault
         }
     }
 
@@ -730,6 +735,8 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
             return FeatureStrings.brightness(L10n.shared.language).keyboardBrightnessDecrease
         case .keyboardBrightnessIncrease:
             return FeatureStrings.brightness(L10n.shared.language).keyboardBrightnessIncrease
+        case .menuBarHiding:
+            return FeatureStrings.menuBarHiding(L10n.shared.language).title
         }
     }
 
@@ -748,6 +755,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
             return [DefaultsKey.brightnessControlEnabled, DefaultsKey.displayBrightnessShortcutsEnabled]
         case .keyboardBrightnessDecrease, .keyboardBrightnessIncrease:
             return [DefaultsKey.keyboardBrightnessShortcutsEnabled]
+        case .menuBarHiding: return [DefaultsKey.menuBarHidingEnabled]
         }
     }
 
@@ -763,6 +771,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
             return .screenshot
         case .displayBrightnessDecrease, .displayBrightnessIncrease: return .brightness
         case .keyboardBrightnessDecrease, .keyboardBrightnessIncrease: return .brightness
+        case .menuBarHiding: return .menuBarHiding
         }
     }
 

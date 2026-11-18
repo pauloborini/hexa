@@ -12,9 +12,9 @@ import SwiftUI
 ///
 /// The restriction takes an allow-list of bundles and hides every bundle the
 /// list omits, so it is applied only from a read that saw something and only
-/// while the hidden section is closed. An app whose items could not be read
-/// stays allowed: an icon left visible can be fixed with another click, an
-/// icon hidden by mistake cannot.
+/// while the hidden section is closed. An app that starts while the section is
+/// closed is hidden by default: the arrow reveals it. An app whose items could
+/// not be read stays visible, because a failed read is not a classification.
 @MainActor
 final class MenuBarHidingService: ObservableObject {
     static let shared = MenuBarHidingService()
@@ -26,8 +26,11 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     @Published private(set) var isRunning = false
-    @Published private(set) var state: State = .expanded
+    @Published private(set) var state: State = .expanded {
+        didSet { applySeparatorLengthForCurrentState() }
+    }
     @Published private(set) var itemsInSections: [MenuBarSection: [String]] = [:]
+    @Published private(set) var shortcutRegistrationFailed = false
 
     /// System item identifiers to keep visible. Unknown identifiers are
     /// ignored, so the range covers items a given Mac does not have.
@@ -36,6 +39,7 @@ final class MenuBarHidingService: ObservableObject {
     /// never calls it, the restriction is released rather than left in doubt.
     static let activationTimeout: TimeInterval = 3
 
+    private let toggleHotkey = QuickToolHotkey(id: 61)
     private var toggleItem: NSStatusItem?
     private var separatorItem: NSStatusItem?
     private var assertion: MenuBarVisibilityAssertion?
@@ -68,7 +72,11 @@ final class MenuBarHidingService: ObservableObject {
         MenuBarHidingEngineKind.forOperatingSystem()
     }
 
-    private init() {}
+    private init() {
+        toggleHotkey.onPress = { [weak self] in
+            Task { @MainActor in self?.toggleClicked() }
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -80,6 +88,7 @@ final class MenuBarHidingService: ObservableObject {
         if isRunning {
             applySeparatorLengthForCurrentState()
             refreshLayout()
+            syncToggleHotkey()
             return
         }
         installItemsIfNeeded()
@@ -88,6 +97,7 @@ final class MenuBarHidingService: ObservableObject {
         state = .expanded
         applySeparatorLengthForCurrentState()
         hide()
+        syncToggleHotkey()
     }
 
     func suspend() {
@@ -95,6 +105,8 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     private func stop() {
+        toggleHotkey.unregister()
+        shortcutRegistrationFailed = false
         rehideTimer?.invalidate()
         rehideTimer = nil
         removeInteractionMonitor()
@@ -121,7 +133,6 @@ final class MenuBarHidingService: ObservableObject {
     private func startObserving() {
         guard observers.isEmpty else { return }
         let center = NotificationCenter.default
-        let workspace = NSWorkspace.shared.notificationCenter
         // The arrangement is read on demand. Reading it on every app
         // activation would walk every running app through Accessibility
         // (near a second) for nothing: the restriction is rebuilt right
@@ -129,30 +140,9 @@ final class MenuBarHidingService: ObservableObject {
         observers = [
             (center, center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                         object: nil, queue: .main) { [weak self] _ in
-                self?.applySeparatorLengthForCurrentState()
-            }),
-            // An app that starts while the section is closed cannot be placed:
-            // its item is not in the arrangement, and an allow-list that omits
-            // it hides it. It stays visible, the same way an unreadable app
-            // does.
-            (workspace, workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
-                                              object: nil, queue: .main) { [weak self] note in
-                guard let bundle = (note.userInfo?[NSWorkspace.applicationUserInfoKey]
-                                    as? NSRunningApplication)?.bundleIdentifier else { return }
-                self?.includeBundle(bundle)
+                Task { @MainActor in self?.applySeparatorLengthForCurrentState() }
             }),
         ]
-    }
-
-    private func includeBundle(_ bundle: String) {
-        guard isRunning, assertion != nil, engineKind == .visibilityRestriction,
-              !appliedBundles.contains(bundle) else { return }
-        // Kept in the unread set too, so every later list built from the
-        // stored arrangement keeps it visible as well.
-        unreadBundles.insert(bundle)
-        let allowed = (appliedBundles + [bundle]).sorted()
-        // The published state is left as it is: the section stays closed.
-        activate(allowing: allowed) { _ in }
     }
 
     // MARK: - Status items
@@ -273,21 +263,29 @@ final class MenuBarHidingService: ObservableObject {
         return MenuBarHidingRehideDelay(rawValue: rawValue) ?? .fiveSeconds
     }
 
+    /// Re-arms the countdown when the choice changes while the section is open.
+    func rehideDelayDidChange() {
+        guard isRunning, state == .expanded else { return }
+        restartRehideTimer()
+    }
+
     /// Reacts to one click or key while the section is open. Escape, and a
-    /// click outside the bar with the instant choice, close it now; a click
+    /// click outside the bar close it now; a click
     /// in the bar restarts the countdown.
     private func handleRevealInteraction(isKey: Bool, keyCode: UInt16, location: CGPoint) {
         // `hide()` removes the monitors; a click already queued must not
         // restart a countdown for a section that is closing.
         guard isRunning, state == .expanded, !interactionMonitors.isEmpty else { return }
-        if isKey {
-            if keyCode == 53 { hide() }
-            return
-        }
-        if isInMenuBar(location) {
-            restartRehideTimer()
-        } else if currentRehideDelay.seconds == nil {
+        switch MenuBarHidingSupport.revealDecision(
+            isKey: isKey,
+            keyCode: keyCode,
+            isInMenuBar: isInMenuBar(location)) {
+        case .hide:
             hide()
+        case .restart:
+            restartRehideTimer()
+        case .ignore:
+            break
         }
     }
 
@@ -418,7 +416,7 @@ final class MenuBarHidingService: ObservableObject {
         } else {
             if case .collapsed = state { isCollapsed = true } else { isCollapsed = false }
         }
-        setToggleImage(collapsed: isCollapsed)
+        setTogglePresentation(collapsed: isCollapsed)
         // Only the separator engine has one; on macOS 27 the arrow is the
         // boundary.
         guard let separatorItem else { return }
@@ -429,12 +427,19 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     /// The arrow points where a click moves the icons: left while they are
-    /// hidden (they come out to the left), right while they are shown.
-    private func setToggleImage(collapsed: Bool) {
+    /// hidden (they come out to the left), right while they are shown. A
+    /// failed hide also carries its reason on the control.
+    private func setTogglePresentation(collapsed: Bool) {
         guard let button = toggleItem?.button else { return }
-        let symbol = MenuBarHidingSupport.toggleSymbol(collapsed: collapsed)
+        let reason: String? = if case let .unavailable(reason) = state { reason } else { nil }
+        let presentation = MenuBarHidingSupport.togglePresentation(
+            collapsed: collapsed, unavailableReason: reason, title: text.title)
+        button.toolTip = presentation.toolTip
+        button.setAccessibilityLabel(presentation.accessibilityDescription)
+        let symbol = presentation.symbol
         guard button.image?.name() != symbol,
-              let image = NSImage(systemSymbolName: symbol, accessibilityDescription: text.title)
+              let image = NSImage(systemSymbolName: symbol,
+                                  accessibilityDescription: presentation.accessibilityDescription)
         else { return }
         image.setName(symbol)
         if button.image != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -447,6 +452,17 @@ final class MenuBarHidingService: ObservableObject {
             button.layer?.add(flip, forKey: "chevron")
         }
         button.image = image
+    }
+
+    private func syncToggleHotkey() {
+        let shortcut = GlobalShortcutRole.menuBarHiding.savedShortcut
+        let conflicts = isRunning && shortcut.conflictsWithSystemShortcut
+            && !SystemShortcutTakeover.isTakenOver(GlobalShortcutRole.menuBarHiding.storageKey)
+        let registered = toggleHotkey.sync(
+            enabled: isRunning && !conflicts,
+            shortcut: shortcut,
+            storageKey: GlobalShortcutRole.menuBarHiding.storageKey)
+        shortcutRegistrationFailed = isRunning && (conflicts || !registered)
     }
 
     // MARK: - Sections

@@ -256,17 +256,6 @@ enum CleanerSupport {
         "github", "gitlab", "bitbucket", "sourceforge", "googlecode",
     ]
 
-    /// Whether a candidate shares a vendor namespace (its first two dot
-    /// components) with any installed identifier. Vendors ship suites and
-    /// updaters under one namespace with sibling identifiers that no exact
-    /// family match can connect (an installed com.maker.editor keeps
-    /// com.maker.updater alive), so the whole namespace counts as owned
-    /// while anything of that vendor is installed.
-    static func sharesVendorNamespace(candidate: String, withInstalled installed: Set<String>) -> Bool {
-        guard let namespacePrefix = vendorNamespace(of: candidate.lowercased()) else { return false }
-        return installed.contains { vendorNamespace(of: $0) == namespacePrefix }
-    }
-
     private static func vendorNamespace(of id: String) -> String? {
         let parts = id.split(separator: ".")
         guard parts.count >= 2 else { return nil }
@@ -275,17 +264,38 @@ enum CleanerSupport {
         return parts[0] + "." + parts[1]
     }
 
-    /// Whether an installed bundle identifier owns this candidate. Ownership
-    /// is the exact id or a dot separated prefix in either direction, so
-    /// com.maker.App keeps com.maker.App.helper (embedded helpers register
-    /// no app of their own) and com.maker keeps com.maker.App.
-    static func isOwned(candidate: String, byInstalled installed: Set<String>) -> Bool {
-        let lowered = candidate.lowercased()
-        if installed.contains(lowered) { return true }
-        for id in installed {
-            if lowered.hasPrefix(id + ".") || id.hasPrefix(lowered + ".") { return true }
+    /// Ownership data built once for an inventory, including every literal
+    /// dot boundary so empty components retain the original prefix semantics.
+    struct OwnershipIndex {
+        private let ids: Set<String>
+        private let ancestors: Set<String>
+        private let namespaces: Set<String>
+
+        init(installed: Set<String>) {
+            ids = installed
+            var prefixes = Set<String>()
+            for id in installed {
+                for index in id.indices where id[index] == "." {
+                    prefixes.insert(String(id[..<index]))
+                }
+            }
+            ancestors = prefixes
+            namespaces = Set(installed.compactMap { CleanerSupport.vendorNamespace(of: $0) })
         }
-        return false
+
+        func isOwned(_ candidate: String) -> Bool {
+            let lowered = candidate.lowercased()
+            if ids.contains(lowered) || ancestors.contains(lowered) { return true }
+            for index in lowered.indices where lowered[index] == "." {
+                if ids.contains(String(lowered[..<index])) { return true }
+            }
+            return false
+        }
+
+        func sharesVendorNamespace(_ candidate: String) -> Bool {
+            guard let namespace = CleanerSupport.vendorNamespace(of: candidate.lowercased()) else { return false }
+            return namespaces.contains(namespace)
+        }
     }
 
     /// The executables a launchd property list points at, in the order they
