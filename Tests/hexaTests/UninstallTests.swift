@@ -195,7 +195,7 @@ final class UninstallTests: XCTestCase {
         return (root, bundle)
     }
 
-    func testUserImmutableBundleIsNotSelectedNorSafeToRemove() throws {
+    func testUserImmutableBundleIsIdentifiableWithoutRelaxingDefaultPathGuard() throws {
         let (root, bundle) = try makeFixtureApp()
         defer {
             try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: bundle.path)
@@ -208,7 +208,7 @@ final class UninstallTests: XCTestCase {
 
         try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: bundle.path)
 
-        XCTAssertNil(UninstallerSupport.selection(for: bundle))
+        XCTAssertNotNil(UninstallerSupport.selection(for: bundle))
         XCTAssertFalse(UninstallerSupport.removalPathIsSafe(infoURL, within: bundle))
     }
 

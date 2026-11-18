@@ -149,7 +149,7 @@ enum UninstallerSupport {
     static func infoPlistURL(for appURL: URL, fm: FileManager = .default) -> URL? {
         let resolved = appURL.standardizedFileURL
         let macInfo = resolved.appendingPathComponent("Contents/Info.plist")
-        if fileIdentity(at: macInfo) != nil, removalPathIsSafe(macInfo, within: resolved) {
+        if fileIdentity(at: macInfo) != nil, removalPathIsSafe(macInfo, within: resolved, allowRootUserLock: true) {
             return macInfo
         }
         let wrapperDir = resolved.appendingPathComponent("Wrapper", isDirectory: true)
@@ -163,7 +163,7 @@ enum UninstallerSupport {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         for innerApp in candidates {
             let wrapperInfo = innerApp.appendingPathComponent("Info.plist")
-            if fileIdentity(at: wrapperInfo) != nil, removalPathIsSafe(wrapperInfo, within: resolved) {
+            if fileIdentity(at: wrapperInfo) != nil, removalPathIsSafe(wrapperInfo, within: resolved, allowRootUserLock: true) {
                 return wrapperInfo
             }
         }
@@ -211,11 +211,11 @@ enum UninstallerSupport {
             return .failure(.nestedApp)
         }
         guard resolved.pathExtension.caseInsensitiveCompare("app") == .orderedSame,
-              !isSymbolicLink(resolved),
+              !isSymbolicLink(resolved), removalObjectIsSafe(resolved),
               let selectedIdentity = fileIdentity(at: resolved),
               let infoURL = infoPlistURL(for: resolved),
               let selectedInfoIdentity = fileIdentity(at: infoURL),
-              removalPathIsSafe(infoURL, within: resolved),
+              removalPathIsSafe(infoURL, within: resolved, allowRootUserLock: true),
               let rawBundleID = bundleIdentifier(for: resolved),
               let bundleID = verifiedBundleID(rawBundleID) else {
             return .failure(.unidentifiedOrProtected)
@@ -275,19 +275,158 @@ enum UninstallerSupport {
 
     /// A removal path must still exist below the root that produced it and no
     /// component from the item through that root may have become a symlink.
-    static func removalPathIsSafe(_ url: URL, within root: URL) -> Bool {
+    static func removalPathIsSafe(_ url: URL, within root: URL,
+                                  allowRootUserLock: Bool = false,
+                                  allowItemUserLock: Bool = false) -> Bool {
         var current = url.standardizedFileURL
         let root = root.standardizedFileURL
         guard current.path.hasPrefix(root.path + "/") else { return false }
         while current.path.count >= root.path.count {
             guard fileIdentity(at: current) != nil, !isSymbolicLink(current),
-                  !kernelProtectionFlagsSet(at: current) else { return false }
+                  (!kernelProtectionFlagsSet(at: current)
+                   || (allowRootUserLock && current == root && userLockEligible(at: current))
+                   || (allowItemUserLock && current == url.standardizedFileURL && userLockEligible(at: current))) else { return false }
             if current.path == root.path { return true }
             let parent = current.deletingLastPathComponent().standardizedFileURL
             guard parent.path != current.path else { return false }
             current = parent
         }
         return false
+    }
+
+    /// Only the two fixed macOS root aliases are mapped, after verifying the
+    /// link and its physical destination. Arbitrary symlinks remain forbidden.
+    static func physicalRemovalURL(_ url: URL) -> URL? {
+        let path = url.standardizedFileURL.path
+        for name in ["var", "tmp"] where path == "/" + name || path.hasPrefix("/" + name + "/") {
+            let alias = "/" + name
+            let physical = "/private/" + name
+            var link = stat()
+            var resolved = stat()
+            var destination = stat()
+            var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+            let length = readlink(alias, &buffer, buffer.count)
+            guard length > 0, length < buffer.count,
+                  lstat(alias, &link) == 0, (link.st_mode & S_IFMT) == S_IFLNK,
+                  link.st_uid == 0,
+                  stat(alias, &resolved) == 0, lstat(physical, &destination) == 0,
+                  (destination.st_mode & S_IFMT) == S_IFDIR,
+                  resolved.st_dev == destination.st_dev, resolved.st_ino == destination.st_ino else { return nil }
+            let target = String(decoding: buffer.prefix(length).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            guard target == "private/" + name || target == physical else { return nil }
+            return URL(fileURLWithPath: physical + path.dropFirst(alias.count))
+        }
+        return url.standardizedFileURL
+    }
+
+    /// Opens every component without following links, including ancestors above scan roots.
+    /// The descriptor pins the selected object for any flag mutation.
+    static func openRemovalObject(_ url: URL, allowUserLock: Bool) -> Int32? {
+        var before = stat()
+        guard lstat(url.path, &before) == 0,
+              (before.st_mode & S_IFMT) == S_IFREG || (before.st_mode & S_IFMT) == S_IFDIR else {
+            return nil
+        }
+        guard let physical = physicalRemovalURL(url) else { return nil }
+        let components = physical.path.split(separator: "/").map(String.init)
+        guard !components.isEmpty else { return nil }
+        var fd = open("/", O_SEARCH | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        var rootInfo = stat()
+        guard fstat(fd, &rootInfo) == 0, !hasKernelProtection(flags: UInt32(rootInfo.st_flags)) else {
+            close(fd); return nil
+        }
+        for (index, component) in components.enumerated() {
+            let last = index == components.count - 1
+            let mode = last ? (O_RDONLY | O_NONBLOCK) : O_SEARCH
+            let next = openat(fd, component, mode | O_NOFOLLOW | O_CLOEXEC)
+            close(fd)
+            guard next >= 0 else { return nil }
+            fd = next
+            var info = stat()
+            guard fstat(fd, &info) == 0 else { close(fd); return nil }
+            let flags = UInt32(info.st_flags)
+            let system = UInt32(SF_RESTRICTED) | UInt32(SF_IMMUTABLE)
+                | UInt32(SF_APPEND) | UInt32(UF_APPEND)
+            guard flags & system == 0,
+                  flags & UInt32(UF_IMMUTABLE) == 0
+                    || (last && allowUserLock && info.st_uid == geteuid()) else {
+                close(fd); return nil
+            }
+        }
+        var after = stat()
+        guard fstat(fd, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+              (after.st_mode & S_IFMT) == S_IFREG || (after.st_mode & S_IFMT) == S_IFDIR else {
+            close(fd); return nil
+        }
+        return fd
+    }
+
+    static func userLockEligible(at url: URL) -> Bool {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return false }
+        return info.st_uid == geteuid() && UInt32(info.st_flags) & UInt32(UF_IMMUTABLE) != 0
+    }
+
+    /// Check all ancestors without requiring read access to ordinary objects.
+    static func removalObjectIsSafe(_ url: URL, allowUserLock: Bool = true) -> Bool {
+        guard let physical = physicalRemovalURL(url) else { return false }
+        var current = physical.path
+        let item = current
+        while true {
+            var info = stat()
+            guard lstat(current, &info) == 0, (info.st_mode & S_IFMT) != S_IFLNK else { return false }
+            let flags = UInt32(info.st_flags)
+            let blocked = UInt32(SF_RESTRICTED) | UInt32(SF_IMMUTABLE)
+                | UInt32(SF_APPEND) | UInt32(UF_APPEND)
+            guard flags & blocked == 0,
+                  flags & UInt32(UF_IMMUTABLE) == 0
+                    || (allowUserLock && current == item && info.st_uid == geteuid()) else { return false }
+            if current == "/" { return true }
+            let parent = (current as NSString).deletingLastPathComponent
+            guard parent != current else { return false }
+            current = parent
+        }
+    }
+
+    enum LockedTrashResult { case notLocked, moved, failed }
+
+    /// A failed unlock or move never reaches Finder. Restore only through the
+    /// pinned descriptor and only while the original still occupies the path.
+    static func trashUserLockedObject(_ url: URL, identity: FileIdentity,
+                                      isStillSafe: () -> Bool,
+                                      trash: (URL) throws -> Void) -> LockedTrashResult {
+        var initial = stat()
+        guard lstat(url.path, &initial) == 0, isStillSafe() else { return .failed }
+        guard UInt32(initial.st_flags) & UInt32(UF_IMMUTABLE) != 0 else { return .notLocked }
+        guard FileIdentity(device: UInt64(initial.st_dev), inode: UInt64(initial.st_ino)) == identity else {
+            return .failed
+        }
+        guard let fd = openRemovalObject(url, allowUserLock: true) else { return .failed }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0,
+              FileIdentity(device: UInt64(info.st_dev), inode: UInt64(info.st_ino)) == identity else {
+            return .failed
+        }
+        let flags = UInt32(info.st_flags)
+        guard flags & UInt32(UF_IMMUTABLE) != 0 else { return .notLocked }
+        guard info.st_uid == geteuid(),
+              (info.st_mode & S_IFMT) != S_IFREG || info.st_nlink == 1 else { return .failed }
+        guard isStillSafe(), fchflags(fd, flags & ~UInt32(UF_IMMUTABLE)) == 0 else { return .failed }
+        do {
+            guard isStillSafe() else { throw CocoaError(.fileWriteNoPermission) }
+            try trash(url)
+            guard isConfirmedAbsent(at: url) else { throw CocoaError(.fileWriteUnknown) }
+            return .moved
+        } catch {
+            var current = stat()
+            if fileIdentity(at: url) == identity, fstat(fd, &current) == 0,
+               FileIdentity(device: UInt64(current.st_dev), inode: UInt64(current.st_ino)) == identity {
+                _ = fchflags(fd, UInt32(current.st_flags) | UInt32(UF_IMMUTABLE))
+            }
+            return .failed
+        }
     }
 
     static func isSymbolicLink(_ url: URL) -> Bool {
