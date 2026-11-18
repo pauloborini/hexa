@@ -149,19 +149,16 @@ enum MenuBarHidingSupport {
                                                accessibilityDescription: "\(title): \(reason)")
     }
 
-    /// The timed modes still wait out the chosen delay. Ending them on an
-    /// outside click is pending the DEC-041 amendment.
     static func revealDecision(isKey: Bool,
                                keyCode: UInt16,
-                               isInMenuBar: Bool,
-                               delay: MenuBarHidingRehideDelay) -> MenuBarHidingRevealDecision {
+                               isInMenuBar: Bool) -> MenuBarHidingRevealDecision {
         if isKey {
             return keyCode == 53 ? .hide : .ignore
         }
         if isInMenuBar {
             return .restart
         }
-        return delay.seconds == nil ? .hide : .ignore
+        return .hide
     }
 
     static func isDeveloperIDCertificateSubject(_ subject: String?) -> Bool {

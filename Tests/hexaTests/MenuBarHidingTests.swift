@@ -79,19 +79,15 @@ final class MenuBarHidingTests: XCTestCase {
         XCTAssertEqual(failed.accessibilityDescription, "Ícones: Sem acesso")
     }
 
-    func testRevealDecisionKeepsTheCurrentTimedBehavior() {
+    func testRevealDecisionClosesOutsideTheMenuBar() {
         XCTAssertEqual(MenuBarHidingSupport.revealDecision(
-            isKey: true, keyCode: 53, isInMenuBar: false, delay: .fiveSeconds), .hide)
+            isKey: true, keyCode: 53, isInMenuBar: false), .hide)
         XCTAssertEqual(MenuBarHidingSupport.revealDecision(
-            isKey: true, keyCode: 0, isInMenuBar: false, delay: .fiveSeconds), .ignore)
+            isKey: true, keyCode: 0, isInMenuBar: false), .ignore)
         XCTAssertEqual(MenuBarHidingSupport.revealDecision(
-            isKey: false, keyCode: 0, isInMenuBar: true, delay: .fiveSeconds), .restart)
+            isKey: false, keyCode: 0, isInMenuBar: true), .restart)
         XCTAssertEqual(MenuBarHidingSupport.revealDecision(
-            isKey: false, keyCode: 0, isInMenuBar: false, delay: .instant), .hide)
-        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
-            isKey: false, keyCode: 0, isInMenuBar: false, delay: .fiveSeconds), .ignore)
-        XCTAssertEqual(MenuBarHidingSupport.revealDecision(
-            isKey: false, keyCode: 0, isInMenuBar: false, delay: .tenSeconds), .ignore)
+            isKey: false, keyCode: 0, isInMenuBar: false), .hide)
     }
 
     func testMenuBarHidingShortcutRole() {

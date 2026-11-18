@@ -270,7 +270,7 @@ final class MenuBarHidingService: ObservableObject {
     }
 
     /// Reacts to one click or key while the section is open. Escape, and a
-    /// click outside the bar with the instant choice, close it now; a click
+    /// click outside the bar close it now; a click
     /// in the bar restarts the countdown.
     private func handleRevealInteraction(isKey: Bool, keyCode: UInt16, location: CGPoint) {
         // `hide()` removes the monitors; a click already queued must not
@@ -279,8 +279,7 @@ final class MenuBarHidingService: ObservableObject {
         switch MenuBarHidingSupport.revealDecision(
             isKey: isKey,
             keyCode: keyCode,
-            isInMenuBar: isInMenuBar(location),
-            delay: currentRehideDelay) {
+            isInMenuBar: isInMenuBar(location)) {
         case .hide:
             hide()
         case .restart:
