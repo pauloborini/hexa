@@ -1,10 +1,11 @@
 # escopo-do-app
 
-Affects: [app-updates, monitor, uninstaller, cleaner, maintenance-tasks, media-tools, dynamic-island, mixer, keep-awake, keyboard-light, screen-brightness, kill-process, port-manager, screen-capture, dock-display-lock, menu-bar-hiding]
+Affects: [app-updates, monitor, uninstaller, cleaner, maintenance-tasks, media-tools, dynamic-island, mixer, keep-awake, keyboard-light, screen-brightness, kill-process, port-manager, screen-capture, dock-display-lock, menu-bar-hiding, window-manager]
 
 ### DEC-001 — Escopo fechado em módulos próprios
 
-O hexa contém exatamente: App Updates, Monitor de sistema, Uninstaller, Cleaner + Tarefas de manutenção, Media tools, Dynamic Island, Mixer por app, Keep Awake, Luz do teclado, Brilho de tela, Kill Process + Port Manager, Captura de tela + OCR de tela (com atalhos globais), Dock em uma tela e Ícones da menu bar.
+O hexa contém exatamente: App Updates, Monitor de sistema, Uninstaller, Cleaner + Tarefas de manutenção, Media tools, Dynamic Island, Mixer por app, Keep Awake, Luz do teclado, Brilho de tela, Kill Process + Port Manager, Captura de tela + OCR de tela (com atalhos globais), Dock em uma tela, Ícones da menu bar e Gerenciador de janelas.
+_Alterado 2026-11-22 — era: escopo sem Gerenciador de janelas. Motivo: o operador incluiu o módulo de Gerenciador de janelas (posicionamento por atalhos, grid visual e arrasto magnético sob demanda) no escopo._
 _Alterado 2026-11-08 — era: escopo sem Dock em uma tela nem Ícones da menu bar. Motivo: o operador confirmou os dois utilitários no escopo._
 _Alterado 2026-10-22 — era: Cleaner, sem Tarefas de manutenção. Motivo: o operador criou as Tarefas de manutenção (flush DNS, purge de memória, snapshots locais, Launch Services, Spotlight e limpeza do Homebrew) e confirmou a inclusão no escopo, ao lado do Cleaner._
 _Alterado 2026-10-06 — era: escopo fechado em 11 módulos. Motivo: o operador usa captura de tela e OCR (com atalhos) e pediu o módulo._
@@ -164,3 +165,9 @@ _Alterado 2026-11-17 — era: itens cuja identidade ou posição não puder ser 
 _Alterado 2026-11-17 — era: clique fora encerrava somente o modo Instantâneo; os modos de 5 ou 10 segundos aguardavam o prazo. Motivo: o operador confirmou o recolhimento por clique fora também nos modos temporizados, com prazo máximo reiniciado pela interação na barra._
 
 Decisão do operador em 2026-11-08.
+
+### DEC-044 — Ciclo de posições com o mesmo atalho
+
+O Gerenciador de janelas oferece quatro colunas de 25% da área útil do monitor. Com a opção de ciclo habilitada, o primeiro toque aplica a posição configurada e os próximos toques no mesmo atalho percorrem as posições da mesma largura, da direita para a esquerda, com retorno à posição mais à direita. O ciclo se aplica a metades laterais, terços, dois terços e colunas de um quarto. A opção começa desligada e, quando ligada, tem prioridade sobre o ciclo de larguras das metades laterais. A grade continua aplicando a posição selecionada diretamente.
+
+Decisão do operador em 2026-11-22.

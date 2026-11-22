@@ -216,6 +216,19 @@ Exceções e isenções registradas:
 - Nenhuma combinação aprovada reprova. Correções feitas na aprovação (2026-10-06): `fg.tertiary` claro subiu para 64%, `accent.text` claro escureceu para #84682C, `status.ok` e `status.warning` claros escureceram para #607651 e #8E672C.
 - Re-medição 2026-10-07 (accent neutro): os 4 pares de accent e os pares de seleção passam sem ajuste adicional; `accent.text` claro fixado em #5C564B (mais escuro que o latão anterior, 4.5:1 sobrado em todas as superfícies).
 
+### Gerenciador de janelas (2026-11-22)
+
+Valores sRGB dos tokens atuais sobre as superfícies da grade, das zonas de encaixe e da prévia. A seleção compõe sobre o cartão elevado. A borda informativa da prévia usa uma base opaca de `surface.inset`.
+
+| Par | Escuro | Claro | Mínimo |
+|---|---:|---:|---:|
+| `fg.secondary` / `surface.inset` | 7,55:1 | 6,05:1 | 4,5:1 |
+| `fg.secondary` / `selection.bg` sobre `surface.raised` | 6,33:1 | 6,06:1 | 4,5:1 |
+| `fg.primary` / `surface.inset` | 16,10:1 | 13,73:1 | 4,5:1 |
+| `focus.ring` / `selection.bg` sobre `surface.raised` | 5,37:1 | 4,57:1 | 3:1 |
+| `focus.ring` e `accent.solid` / `surface.inset` | 6,93:1 | 4,56:1 | 3:1 |
+| `accent.solid` / `surface.base` | 7,19:1 | 5,08:1 | 3:1 |
+
 ## 7. Primitives canônicos
 
 Contratos de anatomia, variantes, medidas (por token), estados, foco e acessibilidade. `N/A` marca o que não se aplica. Passivos não recebem tab stop nem foco artificial.
@@ -417,6 +430,10 @@ Mudança que afeta aparência ou usabilidade inspeciona:
 `N/A` registrado com motivo. Gate estático verde não declara equivalência visual.
 
 Registro por superfície:
+
+- **Gerenciador de janelas (2026-11-22):** grade e Ajustes renderizados com `NSHostingView` em claro e escuro. Verificados os limites das células com títulos em até duas linhas, as zonas selecionadas, os controles de atalhos e a exibição de margem limitada a 25% quando a preferência recebe um valor fora da faixa. Pares de contraste em §6. Anéis de foco e respeito a Reduzir Movimento conferidos no código. A navegação física por teclado e a prévia durante o arrasto não foram executadas na instalação atual.
+
+- **Ciclo de posições e colunas de 25% (2026-11-22):** renderizadas as duas superfícies do Gerenciador, em claro e escuro, com a nova opção ligada e o controle de alternância de larguras indisponível. A grade mantém quatro células alinhadas com rótulos de até duas linhas. A mudança usa os mesmos controles, glifos e pares de contraste da revisão do módulo em §6.
 
 - **Janela operacional, Feature Hub, Brilho e páginas do notch (2026-10-11):** revisão estrutural do código final. A sidebar e as páginas de Ajustes compartilham a janela; grupos do Hub usam SectionLabel fora do cartão; o toggle de Brilho limita monitores e deixa a luz do teclado independente; o scroll vertical da página no `NotchView` usa `notchScrollEdgeFade`; letras/fila abertas recebem viewport interno pelo budget disponível, sem o scroll externo. Gates registrados pelo orquestrador: `swift build` de todos os alvos (exit 0, 9,49 segundos), `swift test` (115 testes, zero falhas), `./build.sh` com bundle e assinatura local (exit 0) e `git diff HEAD --check` (exit 0). CUA visual indisponível por `Sky native pipe startup failed`; nenhum render, foco, contraste, estado de hardware ou smoke visual é declarado aprovado. Pendentes: render e foco em contexto real, revisão de cores/temas e smoke pelo operador.
 

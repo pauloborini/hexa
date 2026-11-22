@@ -30,7 +30,7 @@ Explicam o app para quem lê o repositório. Em conflito com uma DEC, vale a DEC
 
 ## Valid features
 
-`app-updates`, `monitor`, `uninstaller`, `cleaner`, `maintenance-tasks`, `media-tools`, `dynamic-island`, `mixer`, `keep-awake`, `keyboard-light`, `screen-brightness`, `kill-process`, `port-manager`, `screen-capture`
+`app-updates`, `monitor`, `uninstaller`, `cleaner`, `maintenance-tasks`, `media-tools`, `dynamic-island`, `mixer`, `keep-awake`, `keyboard-light`, `screen-brightness`, `kill-process`, `port-manager`, `screen-capture`, `dock-display-lock`, `menu-bar-hiding`, `window-manager`
 
 ## By feature
 
@@ -48,3 +48,6 @@ Explicam o app para quem lê o repositório. Em conflito com uma DEC, vale a DEC
 - kill-process → escopo-do-app, licenca-e-identidade, versionamento
 - port-manager → escopo-do-app, licenca-e-identidade, versionamento
 - screen-capture → escopo-do-app, licenca-e-identidade, versionamento
+- dock-display-lock → escopo-do-app, licenca-e-identidade, versionamento
+- menu-bar-hiding → escopo-do-app, licenca-e-identidade, versionamento
+- window-manager → escopo-do-app, licenca-e-identidade, versionamento
