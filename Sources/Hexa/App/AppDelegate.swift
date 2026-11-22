@@ -127,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // onboarding), bring the features that need it up without a relaunch.
         // The list comes from the catalog so a new feature cannot be missed.
         let accessibilityFeatures: [AppFeature] = AppFeature.allCases.filter {
-            $0.isAvailable && $0.permissions.contains(.accessibility)
+            $0.permissions.contains(.accessibility)
         }
         Permissions.shared.$accessibility
             .removeDuplicates()
@@ -223,6 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // Hands back every icon before the process goes: the restriction is
         // released explicitly instead of trusting the system to drop it.
         if AppFeature.menuBarHiding.isAvailable { MenuBarHidingService.shared.suspend() }
+        if AppFeature.windowManager.isAvailable { WindowManagerService.shared.suspend() }
         if AppFeature.notch.isAvailable { NotchService.shared.stop(restoreCapture: false) }
         // A child process outlives the app, so a running conversion stops here.
         if AppFeature.mediaTools.isAvailable { MediaService.shared.cancel(immediately: true) }

@@ -165,6 +165,8 @@ struct GlobalShortcut: Equatable, Hashable {
                                                                  modifiers: [.control, .option])
     static let windowLayoutRightTwoThirdsDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_T),
                                                                   modifiers: [.control, .option])
+    static let windowLayoutPreviousDisplayDefault = GlobalShortcut(keyCode: Int64(kVK_LeftArrow),
+                                                                   modifiers: [.control, .option, .command])
     static let windowLayoutNextDisplayDefault = GlobalShortcut(keyCode: Int64(kVK_RightArrow),
                                                                modifiers: [.control, .option, .command])
     static let windowDirectionalDefault = GlobalShortcut(keyCode: Int64(kVK_Space),

@@ -267,6 +267,7 @@ enum DefaultsKey {
     static let windowLayoutScreenGap = "windowLayoutScreenGap" // px between a snapped window and the visible frame edge
     static let windowLayoutMarginPercent = "windowLayoutMarginPercent" // per-edge percentage for margin maximize
     static let windowLayoutSideRepeatCyclesThirds = "windowLayoutSideRepeatCyclesThirds" // repeated Left/Right cycles half, 2/3, 1/3 on the same display
+    static let windowLayoutCycleSameWidth = "windowLayoutCycleSameWidth"
     static let windowLayoutIgnoredApps = "windowLayoutIgnoredApps" // apps that temporarily disable window layout while focused
     static let panelCollapsedSections = "panelCollapsedSections"
     static let panelCollapsedResetVersion = "panelCollapsedResetVersion"
@@ -423,6 +424,9 @@ enum DefaultsKey {
     static let pointerDisplayShortcut = "pointerDisplayShortcut"
     static let windowEdgeSnapEnabled = "windowEdgeSnapEnabled"
     static let windowEdgeSnapDisabledZones = "windowEdgeSnapDisabledZones" // comma-separated visual zone ids
+    static let windowManagerReserveStageManagerSpace = "windowManagerReserveStageManagerSpace"
+    static let windowManagerShortcutProfile = "windowManagerShortcutProfile"
+    static let windowManagerSnapModifier = "windowManagerSnapModifier"
     static let windowGestureEnabled = "windowGestureEnabled"
     static let windowGestureModifiers = "windowGestureModifiers"
     static let windowGestureRaiseWindow = "windowGestureRaiseWindow"
@@ -795,6 +799,7 @@ enum Defaults {
         DefaultsKey.windowLayoutScreenGap: 0,
         DefaultsKey.windowLayoutMarginPercent: 5.0,
         DefaultsKey.windowLayoutSideRepeatCyclesThirds: false,
+        DefaultsKey.windowLayoutCycleSameWidth: false,
         DefaultsKey.menuBarMetricOrder: defaultMenuBarMetricOrder.joined(separator: ","),
         DefaultsKey.menuBarCombineTemperatures: true,
         DefaultsKey.menuBarSeparateMetrics: false,
@@ -997,6 +1002,9 @@ enum Defaults {
         DefaultsKey.pointerDisplayShortcut: GlobalShortcut.pointerNextDisplayDefault.storageValue,
         DefaultsKey.windowEdgeSnapEnabled: false,
         DefaultsKey.windowEdgeSnapDisabledZones: "",
+        DefaultsKey.windowManagerReserveStageManagerSpace: true,
+        DefaultsKey.windowManagerShortcutProfile: WindowShortcutProfile.standard.rawValue,
+        DefaultsKey.windowManagerSnapModifier: WindowSnapModifier.none.rawValue,
         DefaultsKey.windowGestureEnabled: false,
         DefaultsKey.windowGestureRaiseWindow: false,
         DefaultsKey.windowLayoutShortcutLeft: GlobalShortcut.windowLayoutLeftDefault.storageValue,
@@ -1031,7 +1039,7 @@ enum Defaults {
         DefaultsKey.windowLayoutShortcutLeftMiddleQuarter: "",
         DefaultsKey.windowLayoutShortcutRightMiddleQuarter: "",
         DefaultsKey.windowLayoutShortcutRightQuarter: "",
-        DefaultsKey.windowLayoutShortcutPreviousDisplay: "",
+        DefaultsKey.windowLayoutShortcutPreviousDisplay: GlobalShortcut.windowLayoutPreviousDisplayDefault.storageValue,
         DefaultsKey.windowLayoutShortcutNextDisplay: GlobalShortcut.windowLayoutNextDisplayDefault.storageValue,
         DefaultsKey.windowLayoutShortcutTopLeftSixth: "",
         DefaultsKey.windowLayoutShortcutTopCenterSixth: "",

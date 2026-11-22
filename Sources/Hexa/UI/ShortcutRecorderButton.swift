@@ -524,6 +524,10 @@ struct ShortcutPreferenceRow: View {
             errorText = String(format: l10n.s.shortcutConflictFormat, conflict.title(l10n.s))
             return
         }
+        if let wmConflict = WindowManagerService.activeActionTitle(for: shortcut, language: l10n.language) {
+            errorText = String(format: l10n.s.shortcutConflictFormat, wmConflict)
+            return
+        }
         // Nothing claims this row's key, so accepting an offer would write an
         // opt-in no feature ever resolves: refuse the combination the way the
         // row did before the take-over existed. The live table alone is the

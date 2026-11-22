@@ -26,6 +26,8 @@ enum AppFeature: String, CaseIterable {
     // The desktop's bars: the Dock held to one display, and the menu bar's own
     // items split into visible and hidden sections.
     case dockDisplayLock, menuBarHiding
+    // Window positioning via global shortcuts, interactive grid and magnetic edge snap.
+    case windowManager
     // Dynamic Island, then its extensions
     case notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics,
          notchQueue, notchLiveEqualizer, notchDownloads, notchWatch
@@ -67,8 +69,8 @@ extension AppFeature {
     /// polling for those just because their tile is installed wastes wakeups.
     func monitorsPermissionChanges(boolFor: (String) -> Bool) -> Bool {
         switch self {
-        case .notchWatch:
-            // Watch asks when an area is chosen and checks on every reading.
+        case .notchWatch, .windowManager:
+            // These features check on activation or when handling an event.
             return false
         default:
             return true
@@ -86,7 +88,7 @@ extension AppFeature {
         case .keepAwake, .brightness:
             return .energyDisplay
         case .mediaTools, .cleaner, .maintenanceTasks, .uninstaller, .appUpdates, .killProcess, .portManager,
-             .screenshot, .screenOCR, .dockDisplayLock, .menuBarHiding:
+             .screenshot, .screenOCR, .dockDisplayLock, .menuBarHiding, .windowManager:
             return .tools
         case .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories,
              .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchWatch:
@@ -124,6 +126,7 @@ extension AppFeature {
         case .screenOCR: return "text.viewfinder"
         case .dockDisplayLock: return "panel-bottom"
         case .menuBarHiding: return "menubar.dock.rectangle"
+        case .windowManager: return "layout-grid"
         case .monitorCPU: return "cpu"
         case .monitorGPU: return "rectangle.connected.to.line.below"
         case .monitorMemory: return "memorychip"
@@ -169,6 +172,7 @@ extension AppFeature {
         case .brightness: return [DefaultsKey.brightnessControlEnabled]
         case .dockDisplayLock: return [DefaultsKey.dockDisplayLockEnabled]
         case .menuBarHiding: return [DefaultsKey.menuBarHidingEnabled]
+        case .windowManager: return [DefaultsKey.windowLayoutShortcutsEnabled, DefaultsKey.windowEdgeSnapEnabled]
         case .mixer, .keepAwake, .mediaTools, .cleaner, .maintenanceTasks, .uninstaller, .appUpdates, .killProcess,
              .portManager, .screenshot, .screenOCR, .monitorCPU, .monitorGPU, .monitorMemory,
              .monitorNetwork, .monitorDisk, .monitorPower, .connectedDevices, .fanControl:
@@ -240,6 +244,8 @@ extension AppFeature {
         // The sections are read through every app's AXExtrasMenuBar, and the
         // visibility restriction needs the grant on macOS 27 and later.
         case .menuBarHiding: return [.accessibility]
+        // Reading and repositioning external windows via AXUIElement and passive drag tap.
+        case .windowManager: return [.accessibility]
         case .mediaTools, .maintenanceTasks, .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk,
              .connectedDevices, .fanControl, .killProcess, .portManager:
             return []
@@ -301,7 +307,7 @@ extension AppFeature {
              .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .connectedDevices:
             return true
-        case .killProcess, .portManager, .dockDisplayLock, .menuBarHiding, .fanControl:
+        case .killProcess, .portManager, .dockDisplayLock, .menuBarHiding, .windowManager, .fanControl:
             return false
         }
     }

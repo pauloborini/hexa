@@ -60,7 +60,7 @@ final class OnboardingModuleCatalogTests: XCTestCase {
     /// A união dos 13 grupos é exatamente o catálogo do app: nenhum recurso
     /// repetido, nenhum faltando.
     func testGroupCoverage() {
-        XCTAssertEqual(OnboardingModule.allCases.count, 15, "O passo tem 15 linhas")
+        XCTAssertEqual(OnboardingModule.allCases.count, 16, "O passo tem 16 linhas")
 
         let union = OnboardingModule.allCases.flatMap(\.features)
         XCTAssertEqual(Set(union), Set(AppFeature.allCases),
@@ -143,9 +143,9 @@ final class OnboardingModuleCatalogTests: XCTestCase {
         let optInGroups = OnboardingModule.allCases.filter { group in
             group.features.contains { !$0.installedByDefault }
         }
-        XCTAssertEqual(Set(optInGroups), [.fanControl, .killProcess, .portManager, .dockDisplayLock, .menuBarHiding],
-                       "Só Fan Control, Kill Process, Port Manager, Dock em uma tela e Ícones da menu bar nascem desmarcados")
-        for group in [OnboardingModule.fanControl, .killProcess, .portManager, .dockDisplayLock, .menuBarHiding] {
+        XCTAssertEqual(Set(optInGroups), [.fanControl, .killProcess, .portManager, .dockDisplayLock, .menuBarHiding, .windowManager],
+                       "Só Fan Control, Kill Process, Port Manager, Dock em uma tela, Ícones da menu bar e Gerenciador de janelas nascem desmarcados")
+        for group in [OnboardingModule.fanControl, .killProcess, .portManager, .dockDisplayLock, .menuBarHiding, .windowManager] {
             XCTAssertTrue(group.features.allSatisfy { !$0.installedByDefault },
                           "O grupo \(group) é opt-in por inteiro")
         }
@@ -298,7 +298,7 @@ final class OnboardingModuleCatalogTests: XCTestCase {
         }
         let isAvailable = { (feature: AppFeature) in feature.isAvailable(in: suite) }
 
-        XCTAssertEqual(OnboardingModule.allCases.count, 15, "A lista de linhas é fixa")
+        XCTAssertEqual(OnboardingModule.allCases.count, 16, "A lista de linhas é fixa")
         for group in OnboardingModule.allCases {
             XCTAssertEqual(OnboardingModuleCatalog.installedCount(in: group, isAvailable: isAvailable), 0)
             XCTAssertFalse(OnboardingModuleCatalog.isInstalled(group, isAvailable: isAvailable))

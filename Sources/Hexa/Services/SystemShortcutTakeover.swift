@@ -62,6 +62,16 @@ enum SystemShortcutTakeover {
         return takeOverKeys.contains(storageKey)
     }
 
+    /// A restored backup may assign a different key to every recorded action.
+    static func clearRecordedTakeOvers() {
+        lock.lock()
+        defer { lock.unlock() }
+        for key in takeOverKeys { wanted.removeValue(forKey: key) }
+        takeOverKeys.removeAll()
+        UserDefaults.standard.removeObject(forKey: DefaultsKey.systemShortcutTakeOverKeys)
+        applyLocked(desired: SystemShortcutTakeoverSupport.union(of: wanted))
+    }
+
     /// What a shortcut field must ask before it decides. A key this service is
     /// holding is missing from the live table's answer, so asking the table
     /// alone tells the row that the combination it took over is free — and the

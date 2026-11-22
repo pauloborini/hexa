@@ -97,12 +97,17 @@ enum SettingsBackup {
               PrivateFileStore.write(current, to: copyURL)
         else { return .copyNotSaved }
         let defaults = UserDefaults.standard
+        let hadWindowManager = AppFeature.windowManager.isAvailable
         for key in SettingsBackupSupport.keysToClear(whenImporting: settings) {
             defaults.removeObject(forKey: key)
         }
         for (key, value) in settings {
             defaults.set(value, forKey: key)
         }
-        return FeatureRuntime.shared.relaunchApp() ? nil : .relaunchNotStarted
+        SystemShortcutTakeover.clearRecordedTakeOvers()
+        if hadWindowManager { WindowManagerService.shared.suspend() }
+        if FeatureRuntime.shared.relaunchApp() { return nil }
+        FeatureRuntime.shared.sync([.windowManager])
+        return .relaunchNotStarted
     }
 }

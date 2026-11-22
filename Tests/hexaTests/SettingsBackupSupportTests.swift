@@ -158,4 +158,38 @@ final class SettingsBackupSupportTests: XCTestCase {
         XCTAssertEqual(restored.count, 1)
         XCTAssertEqual(restored[DefaultsKey.clamshellPreferred] as? Bool, true)
     }
+
+    func testWindowManagerPreferencesAreExportableAndRestorable() throws {
+        let exported = SettingsBackupSupport.exportKeys()
+        let wmKeys = [
+            AppFeature.windowManager.availabilityKey,
+            DefaultsKey.windowLayoutShortcutsEnabled,
+            DefaultsKey.windowEdgeSnapEnabled,
+            DefaultsKey.windowManagerReserveStageManagerSpace,
+            DefaultsKey.windowManagerShortcutProfile,
+            DefaultsKey.windowManagerSnapModifier,
+            DefaultsKey.windowLayoutShortcutPreviousDisplay,
+        ]
+        for key in wmKeys {
+            XCTAssertTrue(exported.contains(key), "Expected \(key) to be exportable")
+        }
+        let settings: [String: Any] = [
+            AppFeature.windowManager.availabilityKey: true,
+            DefaultsKey.windowLayoutShortcutsEnabled: true,
+            DefaultsKey.windowEdgeSnapEnabled: true,
+            DefaultsKey.windowManagerReserveStageManagerSpace: false,
+            DefaultsKey.windowManagerShortcutProfile: WindowShortcutProfile.compact.rawValue,
+            DefaultsKey.windowManagerSnapModifier: WindowSnapModifier.option.rawValue,
+            DefaultsKey.windowLayoutWindowGap: 12,
+            DefaultsKey.windowLayoutMarginPercent: 1e30,
+        ]
+        let restored = try XCTUnwrap(SettingsBackupSupport.sanitizedSettings(from: [
+            SettingsBackupSupport.formatVersionKey: 1,
+            SettingsBackupSupport.settingsKey: settings,
+        ]))
+        XCTAssertEqual(Set(restored.keys), Set(settings.keys))
+        XCTAssertEqual(restored[DefaultsKey.windowManagerSnapModifier] as? String, WindowSnapModifier.option.rawValue)
+        XCTAssertEqual(restored[DefaultsKey.windowLayoutMarginPercent] as? Double,
+                       WindowGapsConfig.marginPercentRange.upperBound)
+    }
 }

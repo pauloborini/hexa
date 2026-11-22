@@ -216,6 +216,7 @@ final class ModuleLocalizationParityTests: XCTestCase {
                 ("connectedDevices", FeatureStrings.connectedDevices(language)),
                 ("mediaImageConverter", MediaImageConverterStrings.localized(language)),
                 ("menuBarHiding", FeatureStrings.menuBarHiding(language)),
+                ("windowManager", FeatureStrings.windowManager(language)),
             ]
             for (catalog, value) in catalogs {
                 for child in Mirror(reflecting: value).children {

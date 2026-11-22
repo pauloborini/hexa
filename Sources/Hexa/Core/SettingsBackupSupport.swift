@@ -165,7 +165,10 @@ enum SettingsBackupSupport {
               let settings = payload[settingsKey] as? [String: Any]
         else { return nil }
         let allowed = exportKeys()
-        let filtered = settings.filter { allowed.contains($0.key) && valueLooksRight($0.key, $0.value) }
+        var filtered = settings.filter { allowed.contains($0.key) && valueLooksRight($0.key, $0.value) }
+        if let margin = filtered[DefaultsKey.windowLayoutMarginPercent] as? Double {
+            filtered[DefaultsKey.windowLayoutMarginPercent] = WindowGapsConfig.sanitizedMarginPercent(margin)
+        }
         return portableNotchDisplay(portableMediaSettings(filtered))
     }
 
