@@ -92,9 +92,16 @@ enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    static let brightnessDDCWriteOnlyVerdicts = "brightnessDDCWriteOnlyVerdicts"
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
+    // Set once the paths cached before the read-request checksum seed included
+    // the sub-address have been dropped.
+    static let brightnessDDCReadChecksumRechecked = "brightnessDDCReadChecksumRechecked"
+    // Set once the paths cached before built-in HDMI converter target
+    // addressing have been dropped.
+    static let brightnessDDCHDMIConverterRechecked = "brightnessDDCHDMIConverterRechecked"
     // Per-monitor connection paths a person has told this app to dim in
     // software: the only way to know a write-only channel swallows its writes
     // is to watch the panel, which no probe can do.
@@ -1069,6 +1076,7 @@ enum Defaults {
         migrateOrphanedCaptureShortcut(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
+        recheckBrightnessDDCHDMIConverterPaths(in: defaults)
     }
 
     /// Retire the v1 always-hidden toggle without touching NSStatusItem's
@@ -1139,15 +1147,30 @@ enum Defaults {
         defaults.set(true, forKey: DefaultsKey.notchAutoNowPlayingDefaultApplied)
     }
 
-    /// Discovery used to send one request per read, which reads a monitor that
-    /// answers only paired requests as write-only. That verdict is cached and
-    /// never re-probed, so it would outlive the fix: drop the cache once.
+    /// Discovery used to send one request per read and omit the sub-address from
+    /// read-request checksums, which misclassified monitors as write-only. Drop
+    /// both legacy and dated write-only caches once so affected monitors are
+    /// probed again.
     static func recheckBrightnessDDCWriteOnlyPaths(in defaults: UserDefaults) {
-        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked) else {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked) else {
             return
         }
         defaults.set(true, forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
         defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
+    }
+
+    /// Built-in HDMI converters use a distinct I2C target address; drop cached
+    /// write-only verdicts once so monitors behind one are probed again on
+    /// the converter address.
+    static func recheckBrightnessDDCHDMIConverterPaths(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked) else {
+            return
+        }
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
     }
 
     /// The Companheiro was removed: its installed flag and saved choices, and

@@ -45,6 +45,103 @@ final class EffectorCharacterizationTests: XCTestCase {
         XCTAssertEqual(port.writes.count, before)
     }
 
+    func testKeyboardLightUnavailableIgnoresWrites() {
+        let defaults = UserDefaults.standard
+        let availableKey = DefaultsKey.featureAvailable(AppFeature.brightness.rawValue)
+        let keys = [availableKey, DefaultsKey.keyboardBrightnessShortcutsEnabled]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defaults.set(true, forKey: availableKey)
+        defaults.set(true, forKey: DefaultsKey.keyboardBrightnessShortcutsEnabled)
+
+        let port = FakeKeyboardLight()
+        port.level = -1
+        BrightnessService.keyboardLightPortOverride = port
+        let service = BrightnessService.shared
+        defer {
+            port.onWrite = nil
+            port.level = -1
+            service.refreshKeyboardLight()
+            BrightnessService.keyboardLightPortOverride = nil
+            for (key, value) in zip(keys, saved) {
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+        }
+
+        service.refreshKeyboardLight()
+        XCTAssertNil(service.keyboardLightEnabled)
+        XCTAssertNil(service.keyboardLightLevel)
+
+        let noWrite = expectation(description: "unavailable keyboard backlight receives no writes")
+        noWrite.isInverted = true
+        port.onWrite = { _ in noWrite.fulfill() }
+
+        service.setKeyboardLightEnabled(true)
+        service.setKeyboardLightLevel(0.5)
+        service.stepKeyboardLight(direction: 1)
+
+        wait(for: [noWrite], timeout: 0.2)
+        port.onWrite = nil
+        XCTAssertTrue(port.writes.isEmpty)
+        XCTAssertNil(service.keyboardLightEnabled)
+        XCTAssertNil(service.keyboardLightLevel)
+
+        // Stepping a previously enabled backlight clears state if the port becomes unavailable.
+        port.level = 0.5
+        service.refreshKeyboardLight()
+        XCTAssertEqual(service.keyboardLightEnabled, true)
+        port.level = -1
+        service.stepKeyboardLight(direction: 1)
+        XCTAssertTrue(port.writes.isEmpty)
+        XCTAssertNil(service.keyboardLightEnabled)
+    }
+
+    func testKeyboardLightRefreshDistinguishesZeroFromUnavailableValues() {
+        let port = FakeKeyboardLight()
+        BrightnessService.keyboardLightPortOverride = port
+        let service = BrightnessService.shared
+        defer {
+            port.onWrite = nil
+            port.level = -1
+            service.refreshKeyboardLight()
+            BrightnessService.keyboardLightPortOverride = nil
+        }
+
+        port.level = 0.5
+        service.refreshKeyboardLight()
+        XCTAssertEqual(service.keyboardLightEnabled, true)
+        XCTAssertEqual(service.keyboardLightLevel, 0.5)
+
+        port.level = 0
+        service.refreshKeyboardLight()
+        XCTAssertEqual(service.keyboardLightEnabled, false)
+        XCTAssertEqual(service.keyboardLightLevel, 0)
+
+        port.level = -1
+        service.refreshKeyboardLight()
+        XCTAssertNil(service.keyboardLightEnabled)
+        XCTAssertNil(service.keyboardLightLevel)
+
+        port.level = 0.5
+        service.refreshKeyboardLight()
+        XCTAssertEqual(service.keyboardLightEnabled, true)
+
+        port.level = -0.25
+        service.refreshKeyboardLight()
+        XCTAssertNil(service.keyboardLightEnabled)
+        XCTAssertNil(service.keyboardLightLevel)
+
+        port.level = 0.5
+        service.refreshKeyboardLight()
+        XCTAssertEqual(service.keyboardLightEnabled, true)
+
+        port.level = .nan
+        service.refreshKeyboardLight()
+        XCTAssertNil(service.keyboardLightEnabled)
+        XCTAssertNil(service.keyboardLightLevel)
+
+        XCTAssertTrue(port.writes.isEmpty)
+    }
+
     // MARK: - DDC send (AC-02.1.2)
 
     func testDDCWriteSendsLuminancePacket() {
