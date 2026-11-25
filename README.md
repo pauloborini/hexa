@@ -42,11 +42,12 @@ O hexa organiza suas ferramentas em uma janela única com barra lateral unificad
 | **Mixer por App** | Ajuste independente de volume para cada aplicativo aberto no sistema operacional. | Opera diretamente via CoreAudio sem instalar extensões de kernel (kexts) ou drivers de terceiros. |
 | **Keep Awake** | Prevenção de suspensão do sistema, desligamento de tela e automações inteligentes. | Suporte a operação com tampa fechada (clamshell), automação por monitor externo, fonte de energia ou app em execução e piso de bateria (DEC-034). |
 | **Luz do Teclado** | Controle da intensidade da retroiluminação do teclado integrado do Mac. | Ajuste contínuo por controle deslizante e atalhos, na mesma tela do Brilho. |
-| **Brilho de Tela** | Central de controle para telas integradas e múltiplos monitores externos. | Suporte a protocolo DDC/CI para telas externas e atenuação por software (software dimming) abaixo do mínimo (DEC-013). |
+| **Brilho de Tela** | Central de controle para telas integradas e múltiplos monitores externos. | Suporte a protocolo DDC/CI (incluindo adaptadores HDMI com retorno automático quando disponível) e atenuação por software abaixo do mínimo (DEC-013). |
 | **Kill Process + Port Manager** | Monitor e encerramento forçado de processos e liberação imediata de portas de rede. | Mapeia instantaneamente portas TCP em escuta e encerra o processo associado para liberar a porta em um clique. |
 | **Dock em uma tela** | Mantém o Dock fixo na tela escolhida quando há vários monitores. | Impede que o Dock vá para outra tela quando o ponteiro chega à borda; segure Option para movê-lo de propósito. |
 | **Ícones da menu bar** | Oculta os ícones de outros apps à esquerda do chevron e revela com um clique. | Recolhe de novo após o prazo escolhido (Instantâneo, 5 s ou 10 s); os itens do próprio macOS ficam sempre visíveis (DEC-041). |
-| **Captura de Tela + OCR** | Captura em área, janela ou tela inteira com editor de anotações e leitura óptica de texto. | Salvamento automático configurável (DEC-030), prévia opt-in (DEC-024) e OCR ultrarrápido com Apple Vision. |
+| **Gerenciador de Janelas** | Organização de janelas em metades, terços, 4 colunas (25%), quadrantes, grade visual e arrasto magnético às bordas. | Ciclo progressivo de posições na mesma largura (DEC-044), transferência entre telas, restauração do quadro anterior, respeito ao tamanho mínimo e execução sob demanda por eventos (DEC-002). |
+| **Captura de Tela + OCR** | Captura em área, janela viva sob o cursor, tela inteira ou rolagem com editor embutido e leitura óptica. | Salvamento automático configurável (DEC-030), prévia opt-in (DEC-024), leitura de múltiplos QR codes e OCR em Apple Vision com guarda ao descartar texto aberto. |
 
 ---
 
@@ -97,7 +98,7 @@ O hexa adota um modelo de **solicitação estritamente sob demanda**: cada permi
 
 | Permissão | Módulos Requerentes | Finalidade Principal |
 |---|---|---|
-| **Acessibilidade** | Mixer, Brilho, Dynamic Island, Keep Awake, Dock em uma tela, Ícones da menu bar | Ajuste de volume por app, controle de luminosidade, posição do Dock e ocultação dos ícones da barra de menus. |
+| **Acessibilidade** | Mixer, Brilho, Dynamic Island, Keep Awake, Dock em uma tela, Ícones da menu bar, Gerenciador de janelas | Ajuste de volume por app, controle de luminosidade, posição do Dock, ocultação de itens da barra de menus e posicionamento de janelas por atalhos ou arrasto magnético. |
 | **Gravação de Tela** | Captura de Tela, OCR de Tela, Dynamic Island (Watch) | Captura de janelas, monitoramento de áreas do display e reconhecimento visual de texto. |
 | **Acesso Total ao Disco** | Cleaner, Uninstaller | Localização e remoção de arquivos residuais e caches em diretórios protegidos (opcional). |
 | **Arquivos e Pastas** | Captura de Tela, Cleaner, Dynamic Island (Downloads) | Gravação direta de capturas na Mesa ou Documentos e acompanhamento de downloads. |

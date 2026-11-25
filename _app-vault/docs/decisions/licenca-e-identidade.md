@@ -1,6 +1,6 @@
 # licenca-e-identidade
 
-Affects: [app-updates, monitor, uninstaller, cleaner, maintenance-tasks, media-tools, dynamic-island, mixer, keep-awake, keyboard-light, screen-brightness, kill-process, port-manager, screen-capture]
+Affects: [app-updates, monitor, uninstaller, cleaner, maintenance-tasks, media-tools, dynamic-island, mixer, keep-awake, keyboard-light, screen-brightness, kill-process, port-manager, screen-capture, dock-display-lock, menu-bar-hiding, window-manager]
 
 ### DEC-010 — Licença
 
