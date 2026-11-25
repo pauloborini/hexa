@@ -2313,6 +2313,52 @@ enum ScreenshotSupport {
                       height: (pixelSize.height / scale).rounded())
     }
 
+    /// Copies an image into its own bitmap context so cropped regions do not
+    /// keep the larger source frame alive in memory.
+    static func independentImage(_ image: CGImage) -> CGImage? {
+        guard image.width > 0, image.height > 0 else { return nil }
+        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        let alphaInfo: CGImageAlphaInfo
+        switch image.alphaInfo {
+        case .none, .noneSkipLast, .noneSkipFirst, .premultipliedLast, .premultipliedFirst:
+            alphaInfo = image.alphaInfo
+        default:
+            alphaInfo = .premultipliedLast
+        }
+        let preservedFlags = image.bitmapInfo.rawValue & ~CGBitmapInfo.alphaInfoMask.rawValue
+        let fallbackSpace = colorSpace.model == .rgb ? colorSpace : CGColorSpaceCreateDeviceRGB()
+        let context = CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: max(8, image.bitsPerComponent),
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: preservedFlags | alphaInfo.rawValue
+        ) ?? CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: fallbackSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) ?? CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        guard let context else { return nil }
+        context.interpolationQuality = .none
+        context.setBlendMode(.copy)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.makeImage()
+    }
+
     // MARK: - Backdrop
 
     /// Padded background, corner rounding and shadow applied during export.

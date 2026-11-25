@@ -172,27 +172,36 @@ enum ScreenshotCaptureEngine {
     /// switcher thumbnails use), full resolution, falling back to
     /// ScreenCaptureKit when the private route is unavailable or when it
     /// returns only the visible slice of a window that runs off the screen.
+    /// Pass `preferComposited: true` when composited hardware layers (such as
+    /// video playback) must stay intact instead of falling back to an
+    /// individual window-server buffer.
     /// The scale comes back with the image: a composite with what the app
     /// stacked on the window is drawn at the scale its layers were captured
     /// at, which on mixed displays can differ from the one asked for.
     static func captureWindow(_ windowID: CGWindowID,
-                              scale: CGFloat) async -> (image: CGImage, scale: CGFloat)? {
+                              scale: CGFloat,
+                              preferComposited: Bool = false) async -> (image: CGImage, scale: CGFloat)? {
         // A sheet or dialog the app stacked on the window is a window of its
         // own, and neither single-window route draws it. The
         // window list answers this without waiting on shareable content, so
         // the ordinary capture keeps the faster route.
         let onScreen = onScreenWindows()
-        if let target = onScreen.first(where: { $0.id == windowID }),
-           let geometricPlan = ScreenshotCapturePolicy.attachedCapturePlan(
-               target: target, frontToBack: onScreen) {
-            var plan: ScreenshotCapturePolicy.AttachedCapturePlan? = geometricPlan
-            if AXIsProcessTrusted() {
-                let confirmedIDs = accessibilityAttachedWindowIDs(
-                    targetWindowID: target.id,
-                    ownerPID: target.ownerPID,
-                    candidateWindowIDs: Array(geometricPlan.windowIDs.dropFirst()))
-                plan = ScreenshotCapturePolicy.confirmedAttachment(
-                    geometricPlan, confirmedIDs: confirmedIDs)
+        if let target = onScreen.first(where: { $0.id == windowID }) {
+            var plan: ScreenshotCapturePolicy.AttachedCapturePlan?
+            if let geometricPlan = ScreenshotCapturePolicy.attachedCapturePlan(
+                target: target, frontToBack: onScreen) {
+                plan = geometricPlan
+                if AXIsProcessTrusted() {
+                    let confirmedIDs = accessibilityAttachedWindowIDs(
+                        targetWindowID: target.id,
+                        ownerPID: target.ownerPID,
+                        candidateWindowIDs: Array(geometricPlan.windowIDs.dropFirst()))
+                    plan = ScreenshotCapturePolicy.confirmedAttachment(
+                        geometricPlan, confirmedIDs: confirmedIDs)
+                }
+            }
+            if preferComposited, plan == nil {
+                plan = .init(windowIDs: [windowID], bounds: target.frame)
             }
             if let plan,
                let composited = await captureAttached(plan) {
@@ -200,12 +209,21 @@ enum ScreenshotCaptureEngine {
             }
             // A window spanning two displays has no single display image to
             // crop from; draw each window's own buffer at its place instead
-            // of dropping the dialog on it.
-            if let plan,
+            // of dropping the dialog on it. Single-window composited plans
+            // skip individual buffers so hardware video layers do not turn black.
+            if let plan, plan.windowIDs.count > 1,
                let composited = await composeAttached(plan, frames: Dictionary(
                    onScreen.map { ($0.id, $0.frame) }, uniquingKeysWith: { first, _ in first })) {
                 return composited
             }
+        }
+        if preferComposited {
+            if let fullFrame = await captureIndependentWindow(
+                windowID, scale: scale, requireFullFrame: true) {
+                return (fullFrame, scale)
+            }
+            return await captureIndependentWindow(
+                windowID, scale: scale, requireFullFrame: false).map { ($0, scale) }
         }
         var clippedFallback: CGImage?
         let capturedImage = await WindowPreviewProvider.captureViaWindowServer(windowID)
@@ -219,10 +237,17 @@ enum ScreenshotCaptureEngine {
             }
             clippedFallback = image
         }
+        let capture = await captureIndependentWindow(windowID, scale: scale)
+        return (capture ?? clippedFallback).map { ($0, scale) }
+    }
+
+    private static func captureIndependentWindow(_ windowID: CGWindowID,
+                                                 scale: CGFloat,
+                                                 requireFullFrame: Bool = false) async -> CGImage? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true),
             let window = content.windows.first(where: { $0.windowID == windowID })
-        else { return clippedFallback.map { ($0, scale) } }
+        else { return nil }
         let configuration = SCStreamConfiguration()
         configuration.width = max(1, Int((window.frame.width * scale).rounded()))
         configuration.height = max(1, Int((window.frame.height * scale).rounded()))
@@ -233,10 +258,22 @@ enum ScreenshotCaptureEngine {
         configuration.captureResolution = .best
         configuration.showsCursor = false
         configuration.colorSpaceName = CGColorSpace.sRGB
+        if requireFullFrame {
+            configuration.ignoreGlobalClipSingleWindow = true
+        }
         let filter = SCContentFilter(desktopIndependentWindow: window)
-        let capture = try? await SCScreenshotManager.captureImage(contentFilter: filter,
-                                                                  configuration: configuration)
-        return (capture ?? clippedFallback).map { ($0, scale) }
+        guard let image = try? await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: configuration)
+        else { return nil }
+        guard !requireFullFrame
+            || ScreenshotCapturePolicy.layerCoversFrame(
+                imageWidth: image.width,
+                imageHeight: image.height,
+                frame: window.frame,
+                scale: scale)
+        else { return nil }
+        return image
     }
 
     /// On-screen windows front to back, as the attached-window decision needs
@@ -337,13 +374,12 @@ enum ScreenshotCaptureEngine {
         let windows = plan.windowIDs.compactMap { id in
             content.windows.first { $0.windowID == id }
         }
-        let hits = content.displays.filter { $0.frame.intersects(plan.bounds) }
-        // A window straddling two displays has no single display to crop from,
-        // while one hanging off a lone display's edge still does: the crop
-        // clamps the part that is on screen.
+        // A window straddling two displays or hanging past a display's edge
+        // has no single display image to crop whole from; fall back cleanly
+        // instead of clipping it.
         guard windows.count == plan.windowIDs.count,
-              hits.count == 1,
-              let display = hits.first,
+              let display = ScreenshotCapturePolicy.displayCoveringWindow(
+                  plan.bounds, in: content.displays, frame: \.frame),
               let screen = NSScreen.screens.first(where: { $0.displayID == display.displayID }),
               let mainScreen = NSScreen.screens.first
         else { return nil }
@@ -371,10 +407,12 @@ enum ScreenshotCaptureEngine {
         let packedBounds = ScreenshotSupport.clamp(
             CGRect(origin: .zero, size: cropBounds.size), to: imageBounds)
         guard packedBounds != cropBounds, let alpha = alphaCoverage(of: image) else {
-            return image.cropping(to: cropBounds).map { ($0, pixelScale) }
+            return image.cropping(to: cropBounds)
+                .map { (ScreenshotSupport.independentImage($0) ?? $0, pixelScale) }
         }
         return image.cropping(to: ScreenshotSupport.attachedCaptureCrop(
-            placed: cropBounds, packed: packedBounds, coverage: alpha)).map { ($0, pixelScale) }
+            placed: cropBounds, packed: packedBounds, coverage: alpha))
+            .map { (ScreenshotSupport.independentImage($0) ?? $0, pixelScale) }
     }
 
     /// The image's alpha, one byte per pixel with the top row first, which is

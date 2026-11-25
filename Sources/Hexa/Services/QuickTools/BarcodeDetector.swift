@@ -15,16 +15,42 @@ enum BarcodeDetector {
     static let symbologies: [VNBarcodeSymbology] = [.qr, .microQR, .aztec, .dataMatrix, .pdf417]
 
     static func decode(_ image: CGImage) -> [QuickToolsSupport.DecodedBarcode] {
-        let request = VNDetectBarcodesRequest()
-        request.symbologies = symbologies
-        let handler = VNImageRequestHandler(cgImage: image, options: [:])
-        try? handler.perform([request])
-        return (request.results ?? []).compactMap { observation in
-            guard let payload = observation.payloadStringValue, !payload.isEmpty else { return nil }
-            let box = observation.boundingBox
-            return QuickToolsSupport.DecodedBarcode(payload: payload,
-                                                    x: Double(box.minX),
-                                                    y: Double(box.midY))
+        autoreleasepool {
+            let primary = detectBarcodes(in: image)
+            if !primary.isEmpty { return QuickToolsSupport.orderedUniqueBarcodes(primary) }
+
+            if let inverted = QuickToolsSupport.invertedImage(image) {
+                let codes = detectBarcodes(in: inverted)
+                if !codes.isEmpty { return QuickToolsSupport.orderedUniqueBarcodes(codes) }
+            }
+
+            if let enhanced = QuickToolsSupport.contrastNormalizedImage(image) {
+                let codes = detectBarcodes(in: enhanced)
+                if !codes.isEmpty { return QuickToolsSupport.orderedUniqueBarcodes(codes) }
+            }
+
+            if let enhancedInverted = QuickToolsSupport.contrastNormalizedImage(image, invert: true) {
+                let codes = detectBarcodes(in: enhancedInverted)
+                if !codes.isEmpty { return QuickToolsSupport.orderedUniqueBarcodes(codes) }
+            }
+
+            return []
+        }
+    }
+
+    private static func detectBarcodes(in image: CGImage) -> [QuickToolsSupport.DecodedBarcode] {
+        autoreleasepool {
+            let request = VNDetectBarcodesRequest()
+            request.symbologies = symbologies
+            let handler = VNImageRequestHandler(cgImage: image, options: [:])
+            guard (try? handler.perform([request])) != nil else { return [] }
+            return (request.results ?? []).compactMap { observation in
+                guard let payload = observation.payloadStringValue, !payload.isEmpty else { return nil }
+                let box = observation.boundingBox
+                return QuickToolsSupport.DecodedBarcode(payload: payload,
+                                                        x: Double(box.minX),
+                                                        y: Double(box.midY))
+            }
         }
     }
 
@@ -36,11 +62,15 @@ enum BarcodeDetector {
         let url: URL?
     }
 
-    static func read(_ image: CGImage) -> Reading? {
-        let codes = decode(image)
-        let payload = QuickToolsSupport.joinedBarcodePayloads(codes)
+    static func reading(from codes: [QuickToolsSupport.DecodedBarcode]) -> Reading? {
+        let uniqueCodes = QuickToolsSupport.orderedUniqueBarcodes(codes)
+        let payload = QuickToolsSupport.joinedBarcodePayloads(uniqueCodes)
         guard !payload.isEmpty else { return nil }
-        let url = codes.count == 1 ? QuickToolsSupport.openableURL(from: payload) : nil
+        let url = uniqueCodes.count == 1 ? QuickToolsSupport.openableURL(from: payload) : nil
         return Reading(payload: payload, url: url)
+    }
+
+    static func read(_ image: CGImage) -> Reading? {
+        reading(from: decode(image))
     }
 }
