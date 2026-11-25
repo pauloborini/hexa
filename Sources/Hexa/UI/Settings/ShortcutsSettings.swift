@@ -33,6 +33,7 @@ struct ShortcutsSettings: View {
     private var visibleGroups: [FeatureGroup] {
         FeatureGroup.allCases.filter { group in
             availableRoles.contains { $0.group == group }
+                || (group == .tools && AppFeature.windowManager.isAvailable)
         }
     }
 
@@ -47,6 +48,8 @@ struct ShortcutsSettings: View {
                             ForEach(featuresWithShortcuts(in: group), id: \.self) { feature in
                                 if feature == .screenshot {
                                     captureGroupRows
+                                } else if feature == .windowManager {
+                                    featureSettingsLinkRow(feature)
                                 } else {
                                     featureRows(feature, in: group)
                                 }
@@ -68,6 +71,7 @@ struct ShortcutsSettings: View {
             // other capture tools render inside it instead of on their own.
             if feature == .screenshot { return group == .tools && !captureRoles.isEmpty }
             if GlobalShortcutRole.captureFeatures.contains(feature) { return false }
+            if feature == .windowManager { return group == .tools && AppFeature.windowManager.isAvailable }
             return availableRoles.contains { $0.feature == feature && $0.group == group }
         }
     }
@@ -86,7 +90,7 @@ struct ShortcutsSettings: View {
             isExpanded: expansionBinding(for: .screenshot, in: .tools))
         if expandedFeatures[.tools, default: []].contains(.screenshot) {
             ForEach(tools, id: \.self) { feature in
-                captureModuleRow(feature)
+                featureSettingsLinkRow(feature)
                     .disclosureIndent()
             }
         }
@@ -97,7 +101,7 @@ struct ShortcutsSettings: View {
         return roles.map(\.feature).filter { seen.insert($0).inserted }
     }
 
-    private func captureModuleRow(_ feature: AppFeature) -> some View {
+    private func featureSettingsLinkRow(_ feature: AppFeature) -> some View {
         Button {
             FeatureWorkspaceWindow.shared.show(feature)
             FeatureWorkspaceState.shared.featureSettingsMode = true

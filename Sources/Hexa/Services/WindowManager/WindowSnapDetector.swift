@@ -145,7 +145,7 @@ final class WindowSnapDetector {
             case .leftMouseDragged:
                 self.handleMouseDragged(to: location, flags: flags, now: now)
             case .leftMouseUp:
-                self.handleMouseUp(at: location, flags: flags, now: now)
+                self.handleMouseUp(at: location, flags: flags)
             default:
                 break
             }
@@ -242,19 +242,24 @@ final class WindowSnapDetector {
         activeDrag = drag
     }
 
-    private func handleMouseUp(at quartzPoint: CGPoint, flags: CGEventFlags, now: TimeInterval) {
+    private func handleMouseUp(at quartzPoint: CGPoint, flags: CGEventFlags) {
         guard let drag = activeDrag else { return }
         activeDrag = nil
         onPreviewChanged?(nil)
 
-        let elapsed = now - drag.lastTimestamp
-        let distance = hypot(quartzPoint.x - drag.lastPointer.x, quartzPoint.y - drag.lastPointer.y)
-        let releaseSpeed = distance / CGFloat(max(0.004, elapsed))
-        let speed = elapsed < 0.15 ? max(releaseSpeed, drag.lastSpeed) : releaseSpeed
         guard isRunning,
               drag.isConfirmedWindowMove,
-              requiredModifier.shouldTrigger(for: flags, nativeOptionTilingEnabled: drag.nativeOptionTilingEnabled),
-              let target = resolveSnapTarget(atQuartzPoint: quartzPoint, speed: speed) else {
+              let previewTarget = drag.currentTarget,
+              requiredModifier.shouldTrigger(for: flags, nativeOptionTilingEnabled: drag.nativeOptionTilingEnabled) else {
+            return
+        }
+        let liveTarget = resolveSnapTarget(atQuartzPoint: quartzPoint, speed: 0)
+        let target: WindowSnapTarget
+        if let liveTarget {
+            target = liveTarget
+        } else if hypot(quartzPoint.x - drag.lastPointer.x, quartzPoint.y - drag.lastPointer.y) <= 6 {
+            target = previewTarget
+        } else {
             return
         }
         onSnapCommitted?(CompletedSnap(

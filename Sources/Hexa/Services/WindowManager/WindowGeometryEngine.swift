@@ -676,10 +676,10 @@ enum WindowGeometryEngine {
         switch action {
         case .leftHalf, .leftThird, .leftTwoThirds, .leftQuarter:
             origin.x = targetRect.minX
-            origin.y = targetRect.minY
+            origin.y = targetRect.maxY - size.height
         case .rightHalf, .rightThird, .rightTwoThirds, .rightQuarter:
             origin.x = targetRect.maxX - size.width
-            origin.y = targetRect.minY
+            origin.y = targetRect.maxY - size.height
         case .topHalf:
             origin.x = targetRect.minX
             origin.y = targetRect.maxY - size.height
@@ -688,7 +688,7 @@ enum WindowGeometryEngine {
             origin.y = targetRect.minY
         case .centerHalf, .centerThird, .centerTwoThirds, .leftMiddleQuarter, .rightMiddleQuarter:
             origin.x = targetRect.midX - size.width / 2
-            origin.y = targetRect.minY
+            origin.y = targetRect.maxY - size.height
         case .topLeft:
             origin.x = targetRect.minX
             origin.y = targetRect.maxY - size.height

@@ -25,6 +25,9 @@ struct WindowManagerSettingsView: View {
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var disabledZonesRaw = ""
     @AppStorage(DefaultsKey.windowManagerShortcutProfile) private var profileRaw = WindowShortcutProfile.standard.rawValue
 
+    @State private var permissionDemandID = UUID()
+    @State private var selectedProfileRaw: String = WindowShortcutProfile.standard.rawValue
+
     private var text: WindowManagerStrings { FeatureStrings.windowManager(l10n.language) }
 
     private var enabledZones: Set<WindowSnapZone> {
@@ -50,7 +53,20 @@ struct WindowManagerSettingsView: View {
             shortcutsSection
             ignoredAppsSection
         }
-        .onAppear { service.syncWithPreferences() }
+        .onAppear {
+            service.syncWithPreferences()
+            selectedProfileRaw = (WindowShortcutProfile(rawValue: profileRaw) ?? .standard).rawValue
+            permissions.setActivePermissionSurface(permissionDemandID, visible: !permissions.accessibility)
+        }
+        .onChange(of: permissions.accessibility) { _, _ in
+            permissions.setActivePermissionSurface(permissionDemandID, visible: !permissions.accessibility)
+        }
+        .onChange(of: profileRaw) { _, newValue in
+            selectedProfileRaw = (WindowShortcutProfile(rawValue: newValue) ?? .standard).rawValue
+        }
+        .onDisappear {
+            permissions.setActivePermissionSurface(permissionDemandID, visible: false)
+        }
     }
 
     // MARK: - Accessibility Banner
@@ -221,12 +237,13 @@ struct WindowManagerSettingsView: View {
     // MARK: - Keyboard Shortcuts
 
     private var shortcutsSection: some View {
-        HexaSection(text.shortcutsSection) {
+        let activeProfile = WindowShortcutProfile(rawValue: profileRaw) ?? .standard
+        return HexaSection(text.shortcutsSection) {
             HStack(spacing: HexaTheme.Spacing.s) {
                 Text(text.shortcutProfileLabel)
                     .font(.hexa(.body))
                 Spacer()
-                Picker(text.shortcutProfileLabel, selection: $profileRaw) {
+                Picker(text.shortcutProfileLabel, selection: $selectedProfileRaw) {
                     Text(text.profileStandard).tag(WindowShortcutProfile.standard.rawValue)
                     Text(text.profileCompact).tag(WindowShortcutProfile.compact.rawValue)
                 }
@@ -234,7 +251,7 @@ struct WindowManagerSettingsView: View {
                 .pickerStyle(.menu)
                 .fixedSize()
                 Button(text.resetShortcutsButton) {
-                    let profile = WindowShortcutProfile(rawValue: profileRaw) ?? .standard
+                    let profile = WindowShortcutProfile(rawValue: selectedProfileRaw) ?? .standard
                     service.applyShortcutProfile(profile)
                 }
                 .buttonStyle(HexaActionButtonStyle())
@@ -251,6 +268,7 @@ struct WindowManagerSettingsView: View {
                 ForEach(WindowManagerAction.allCases) { action in
                     WindowManagerShortcutRow(
                         action: action,
+                        profile: activeProfile,
                         title: text.actionTitle(action),
                         emptyTitle: text.noShortcutAssigned,
                         isEnabled: shortcutsEnabled,
@@ -368,6 +386,7 @@ private struct WindowSnapZoneTile: View {
 private struct WindowManagerShortcutRow: View {
     @ObservedObject private var l10n = L10n.shared
     let action: WindowManagerAction
+    let profile: WindowShortcutProfile
     let title: String
     let emptyTitle: String
     let isEnabled: Bool
@@ -379,23 +398,25 @@ private struct WindowManagerShortcutRow: View {
     @State private var pendingTakeOver: GlobalShortcut?
 
     init(action: WindowManagerAction,
+         profile: WindowShortcutProfile,
          title: String,
          emptyTitle: String,
          isEnabled: Bool,
          hasConflict: Bool) {
         self.action = action
+        self.profile = profile
         self.title = title
         self.emptyTitle = emptyTitle
         self.isEnabled = isEnabled
         self.hasConflict = hasConflict
-        let fallback = action.defaultShortcut(for: .standard)?.storageValue
+        let fallback = action.defaultShortcut(for: profile)?.storageValue
             ?? WindowManagerAction.clearedShortcutStorageValue
         _rawValue = AppStorage(wrappedValue: fallback, action.shortcutKey)
     }
 
     private var currentShortcut: GlobalShortcut? {
         WindowManagerAction.resolvedShortcut(storedValue: rawValue,
-                                             defaultShortcut: action.defaultShortcut(for: .standard))
+                                             defaultShortcut: action.defaultShortcut(for: profile))
     }
 
     var body: some View {

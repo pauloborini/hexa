@@ -27,6 +27,7 @@ final class WindowManagerService: ObservableObject {
     @Published private(set) var failedShortcutActions: Set<WindowManagerAction> = []
     @Published private(set) var ignoredApps: [String] = []
     @Published private(set) var isSnapActive: Bool = false
+    @Published private(set) var shortcutRevision: Int = 0
 
     private static let hotKeySignature: OSType = 0x4858_574D // 'HXWM'
 
@@ -41,6 +42,8 @@ final class WindowManagerService: ObservableObject {
 
     private let snapDetector = WindowSnapDetector()
     private let overlayController = WindowOverlayController()
+    private let snapMutationQueue = DispatchQueue(label: "io.github.pauloborini.hexa.window-manager.snap",
+                                                  qos: .userInteractive)
     private var appActivationObserver: NSObjectProtocol?
 
     private init() {
@@ -94,7 +97,7 @@ final class WindowManagerService: ObservableObject {
 
         let zones = WindowSnapZone.enabledZones(from: defaults.string(forKey: DefaultsKey.windowEdgeSnapDisabledZones))
         syncActivationObserver(needed: shortcutsWanted || (snapWanted && !zones.isEmpty))
-        if snapWanted && !frontIsIgnored && !zones.isEmpty {
+        if snapWanted && !zones.isEmpty {
             let modifier = WindowSnapModifier(rawValue: defaults.string(forKey: DefaultsKey.windowManagerSnapModifier) ?? "") ?? .none
             let reserveSM = defaults.object(forKey: DefaultsKey.windowManagerReserveStageManagerSpace) as? Bool ?? true
             snapDetector.configure(
@@ -147,6 +150,7 @@ final class WindowManagerService: ObservableObject {
             }
         }
         shortcutRequest = nil
+        shortcutRevision += 1
         syncWithPreferences()
     }
 
@@ -159,6 +163,7 @@ final class WindowManagerService: ObservableObject {
             defaults.set(WindowManagerAction.clearedShortcutStorageValue, forKey: action.shortcutKey)
         }
         shortcutRequest = nil
+        shortcutRevision += 1
         syncWithPreferences()
     }
 
@@ -301,18 +306,15 @@ final class WindowManagerService: ObservableObject {
             let destRect = WindowGeometryEngine.transferRect(current: currentAppKit,
                                                              from: srcVisible,
                                                              to: dstVisible)
-            if let placedFrame = WindowAccessibilityClient.applyRect(destRect,
-                                                   action: action,
-                                                   visibleFrame: dstVisible,
-                                                   primaryScreenTopY: topY,
-                                                   on: target.window) {
-                if !target.frame.isClose(to: placedFrame, tolerance: 1) {
-                    frameHistory.record(target.frame, for: target.key)
-                }
-                lastPlacements[target.key] = (action, placedFrame, nil)
-                return publish(.applied(action))
-            }
-            return publish(.failed)
+            let placedFrame = WindowAccessibilityClient.applyRect(destRect,
+                                                                  action: action,
+                                                                  visibleFrame: dstVisible,
+                                                                  primaryScreenTopY: topY,
+                                                                  on: target.window)
+            return recordPlacementOutcome(placedFrame,
+                                          action: action,
+                                          for: target.key,
+                                          previousFrame: target.frame)
         }
 
         let sideCycle = defaults.bool(forKey: DefaultsKey.windowLayoutSideRepeatCyclesThirds)
@@ -391,18 +393,31 @@ final class WindowManagerService: ObservableObject {
                                   primaryScreenTopY: CGFloat,
                                   previousFrame: WindowFrame,
                                   shortcut: GlobalShortcut? = nil) -> WindowManagerOutcome {
-        if let placedFrame = WindowAccessibilityClient.applyRect(destRect,
-                                               action: action,
-                                               visibleFrame: visibleFrame,
-                                               primaryScreenTopY: primaryScreenTopY,
-                                               on: target.window) {
-            if !previousFrame.isClose(to: placedFrame, tolerance: 1) {
-                frameHistory.record(previousFrame, for: target.key)
-            }
-            lastPlacements[target.key] = (action, placedFrame, shortcut)
-            return publish(.applied(action))
+        let placedFrame = WindowAccessibilityClient.applyRect(destRect,
+                                                              action: action,
+                                                              visibleFrame: visibleFrame,
+                                                              primaryScreenTopY: primaryScreenTopY,
+                                                              on: target.window)
+        return recordPlacementOutcome(placedFrame,
+                                      action: action,
+                                      for: target.key,
+                                      previousFrame: previousFrame,
+                                      shortcut: shortcut)
+    }
+
+    private func recordPlacementOutcome(_ placedFrame: WindowFrame?,
+                                        action: WindowManagerAction,
+                                        for key: WindowIdentityKey,
+                                        previousFrame: WindowFrame,
+                                        shortcut: GlobalShortcut? = nil) -> WindowManagerOutcome {
+        guard let placedFrame else {
+            return publish(.failed)
         }
-        return publish(.failed)
+        if !previousFrame.isClose(to: placedFrame, tolerance: 1) {
+            frameHistory.record(previousFrame, for: key)
+        }
+        lastPlacements[key] = (action, placedFrame, shortcut)
+        return publish(.applied(action))
     }
 
     private func handleCommittedSnap(_ completed: WindowSnapDetector.CompletedSnap) {
@@ -414,19 +429,35 @@ final class WindowManagerService: ObservableObject {
             return
         }
 
-        guard let target = WindowAccessibilityClient.resolveTarget(windowID: completed.windowID,
-                                                                   pid: completed.pid),
-              target.app.bundleIdentifier.map({ !ignoredApps.contains($0) }) ?? true else { return }
-        pruneHistory(keeping: target.key)
         let screens = NSScreen.screens
         let topY = WindowAccessibilityClient.primaryScreenTopY(from: screens)
+        let ignoredSet = Set(ignoredApps)
         let initialFrame = WindowFrame(rect: completed.initialQuartzFrame)
-        _ = executePlacement(completed.target.action,
-                             on: target,
-                             destRect: completed.target.previewFrame,
-                             visibleFrame: completed.target.visibleFrame,
-                             primaryScreenTopY: topY,
-                             previousFrame: initialFrame)
+
+        snapMutationQueue.async { [weak self] in
+            guard self != nil else { return }
+            guard let target = WindowAccessibilityClient.resolveTarget(windowID: completed.windowID,
+                                                                       pid: completed.pid),
+                  target.app.bundleIdentifier.map({ !ignoredSet.contains($0) }) ?? true else { return }
+            let placedFrame = WindowAccessibilityClient.applyRect(
+                completed.target.previewFrame,
+                action: completed.target.action,
+                visibleFrame: completed.target.visibleFrame,
+                primaryScreenTopY: topY,
+                on: target.window
+            )
+            let targetKey = target.key
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      AppFeature.windowManager.isAvailable,
+                      SessionActivity.shared.isActive else { return }
+                self.pruneHistory(keeping: targetKey)
+                _ = self.recordPlacementOutcome(placedFrame,
+                                                action: completed.target.action,
+                                                for: targetKey,
+                                                previousFrame: initialFrame)
+            }
+        }
     }
 
     // MARK: - Carbon Global Hotkeys
@@ -443,10 +474,12 @@ final class WindowManagerService: ObservableObject {
         guard !eligible.isEmpty else {
             shortcutRequest = (desired, conflicts)
             failedShortcutActions = Set(desired.keys)
+            shortcutRevision += 1
             return
         }
         guard installHotKeyHandlerIfNeeded() else {
             failedShortcutActions = Set(desired.keys)
+            shortcutRevision += 1
             return
         }
 
@@ -484,10 +517,12 @@ final class WindowManagerService: ObservableObject {
         }
         if !registrationFailed { shortcutRequest = (desired, conflicts) }
         failedShortcutActions = failures
+        shortcutRevision += 1
     }
 
     private func unregisterHotkeys() {
         hotKeyGeneration += 1
+        let hadShortcutState = !hotKeyRefs.isEmpty || shortcutRequest != nil || !failedShortcutActions.isEmpty
         for (action, ref) in hotKeyRefs {
             UnregisterEventHotKey(ref)
             SystemShortcutTakeover.release(action.shortcutKey)
@@ -499,6 +534,9 @@ final class WindowManagerService: ObservableObject {
         }
         shortcutRequest = nil
         failedShortcutActions.removeAll()
+        if hadShortcutState {
+            shortcutRevision += 1
+        }
     }
 
     private func installHotKeyHandlerIfNeeded() -> Bool {

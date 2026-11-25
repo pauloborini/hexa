@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Paulo Borini
 
+import Carbon.HIToolbox
 import CoreGraphics
 import XCTest
 
@@ -362,5 +363,188 @@ final class WindowGeometryEngineTests: XCTestCase {
             Defaults.registeredDefaults[DefaultsKey.windowLayoutShortcutPreviousDisplay] as? String,
             GlobalShortcut.windowLayoutPreviousDisplayDefault.storageValue
         )
+    }
+
+    // MARK: - DEC-044 Columns, Horizontal Cycle, Display Crossing, Anchoring, Config & Permissions
+
+    func testQuarterColumnsWithoutAndWithGaps() {
+        let vf = CGRect(x: 0, y: 0, width: 1600, height: 900)
+        let current = CGRect(x: 100, y: 100, width: 500, height: 400)
+
+        let q1 = WindowGeometryEngine.rect(for: .leftQuarter, current: current, visibleFrame: vf)
+        let q2 = WindowGeometryEngine.rect(for: .leftMiddleQuarter, current: current, visibleFrame: vf)
+        let q3 = WindowGeometryEngine.rect(for: .rightMiddleQuarter, current: current, visibleFrame: vf)
+        let q4 = WindowGeometryEngine.rect(for: .rightQuarter, current: current, visibleFrame: vf)
+
+        XCTAssertEqual(q1, CGRect(x: 0, y: 0, width: 400, height: 900))
+        XCTAssertEqual(q2, CGRect(x: 400, y: 0, width: 400, height: 900))
+        XCTAssertEqual(q3, CGRect(x: 800, y: 0, width: 400, height: 900))
+        XCTAssertEqual(q4, CGRect(x: 1200, y: 0, width: 400, height: 900))
+
+        let gaps = WindowGapsConfig(windowGap: 16, screenGap: 12)
+        let gq1 = WindowGeometryEngine.rect(for: .leftQuarter, current: current, visibleFrame: vf, gaps: gaps)
+        let gq2 = WindowGeometryEngine.rect(for: .leftMiddleQuarter, current: current, visibleFrame: vf, gaps: gaps)
+        let gq3 = WindowGeometryEngine.rect(for: .rightMiddleQuarter, current: current, visibleFrame: vf, gaps: gaps)
+        let gq4 = WindowGeometryEngine.rect(for: .rightQuarter, current: current, visibleFrame: vf, gaps: gaps)
+
+        XCTAssertEqual(gq1.minX, 12)
+        XCTAssertEqual(gq2.minX - gq1.maxX, 16)
+        XCTAssertEqual(gq3.minX - gq2.maxX, 16)
+        XCTAssertEqual(gq4.minX - gq3.maxX, 16)
+        XCTAssertEqual(gq4.maxX, 1588)
+        for rect in [gq1, gq2, gq3, gq4] {
+            XCTAssertEqual(rect.minY, 12)
+            XCTAssertEqual(rect.maxY, 888)
+        }
+        XCTAssertEqual(gq1.width, 386)
+        XCTAssertEqual(gq2.width, 378)
+        XCTAssertEqual(gq3.width, 378)
+        XCTAssertEqual(gq4.width, 386)
+    }
+
+    func testHorizontalCycleSameWidthFamiliesAndNonCyclingActions() {
+        let families: [[WindowManagerAction]] = [
+            [.rightHalf, .centerHalf, .leftHalf],
+            [.rightThird, .centerThird, .leftThird],
+            [.rightTwoThirds, .centerTwoThirds, .leftTwoThirds],
+            [.rightQuarter, .rightMiddleQuarter, .leftMiddleQuarter, .leftQuarter]
+        ]
+
+        for order in families {
+            for startAction in order {
+                // First press applies the requested action itself.
+                XCTAssertEqual(WindowGeometryEngine.horizontalCycle(for: startAction, previousAction: nil), startAction)
+            }
+            // Repeated presses cycle right-to-left and wrap back to the rightmost position.
+            var previous = order[0]
+            for step in 1...(order.count * 2) {
+                let next = WindowGeometryEngine.horizontalCycle(for: order[0], previousAction: previous)
+                XCTAssertEqual(next, order[step % order.count])
+                previous = next!
+            }
+            // Starting from the leftmost action cycles right-to-left starting at the rightmost on the second press.
+            let leftmost = order[order.count - 1]
+            let first = WindowGeometryEngine.horizontalCycle(for: leftmost, previousAction: nil)
+            XCTAssertEqual(first, leftmost)
+            let wrapped = WindowGeometryEngine.horizontalCycle(for: leftmost, previousAction: first)
+            XCTAssertEqual(wrapped, order[0])
+        }
+
+        let nonCycling: [WindowManagerAction] = [
+            .topHalf, .bottomHalf, .topLeft, .topRight, .bottomLeft, .bottomRight,
+            .maximize, .marginMaximize, .center, .restore, .previousDisplay, .nextDisplay
+        ]
+        for action in nonCycling {
+            XCTAssertNil(WindowGeometryEngine.horizontalCycle(for: action, previousAction: nil))
+            XCTAssertNil(WindowGeometryEngine.horizontalCycle(for: action, previousAction: action))
+        }
+    }
+
+    func testDisplayCrossingAllDirectionsAndThirdsToggle() {
+        let left = WindowGeometryEngine.displayCrossing(for: .leftHalf, previousAction: .leftHalf, sideRepeatCyclesThirds: false)
+        XCTAssertEqual(left?.action, .rightHalf)
+        XCTAssertEqual(left?.direction, .left)
+
+        let right = WindowGeometryEngine.displayCrossing(for: .rightHalf, previousAction: .rightHalf, sideRepeatCyclesThirds: false)
+        XCTAssertEqual(right?.action, .leftHalf)
+        XCTAssertEqual(right?.direction, .right)
+
+        let up = WindowGeometryEngine.displayCrossing(for: .topHalf, previousAction: .topHalf, sideRepeatCyclesThirds: false)
+        XCTAssertEqual(up?.action, .bottomHalf)
+        XCTAssertEqual(up?.direction, .up)
+
+        let down = WindowGeometryEngine.displayCrossing(for: .bottomHalf, previousAction: .bottomHalf, sideRepeatCyclesThirds: false)
+        XCTAssertEqual(down?.action, .topHalf)
+        XCTAssertEqual(down?.direction, .down)
+
+        // First press (not matching previousAction) does not cross.
+        XCTAssertNil(WindowGeometryEngine.displayCrossing(for: .leftHalf, previousAction: nil, sideRepeatCyclesThirds: false))
+
+        // Disabled for horizontal side repeats when sideRepeatCyclesThirds is enabled.
+        XCTAssertNil(WindowGeometryEngine.displayCrossing(for: .leftHalf, previousAction: .leftHalf, sideRepeatCyclesThirds: true))
+        XCTAssertNil(WindowGeometryEngine.displayCrossing(for: .rightHalf, previousAction: .rightHalf, sideRepeatCyclesThirds: true))
+        XCTAssertEqual(WindowGeometryEngine.displayCrossing(for: .topHalf, previousAction: .topHalf, sideRepeatCyclesThirds: true)?.direction, .up)
+        XCTAssertEqual(WindowGeometryEngine.displayCrossing(for: .bottomHalf, previousAction: .bottomHalf, sideRepeatCyclesThirds: true)?.direction, .down)
+    }
+
+    func testAnchoredRectAnchorsVerticalColumnsToTopAndBottomActionsToBottom() {
+        let vf = CGRect(x: 0, y: 60, width: 1600, height: 900)
+        let shorterSize = CGSize(width: 400, height: 500)
+
+        let verticalColumns: [WindowManagerAction] = [
+            .leftHalf, .rightHalf, .centerHalf,
+            .leftThird, .centerThird, .rightThird,
+            .leftTwoThirds, .rightTwoThirds, .centerTwoThirds,
+            .leftQuarter, .leftMiddleQuarter, .rightMiddleQuarter, .rightQuarter
+        ]
+        for action in verticalColumns {
+            let target = WindowGeometryEngine.rect(for: action, current: .zero, visibleFrame: vf)
+            let anchored = WindowGeometryEngine.anchoredRect(
+                for: action,
+                targetRect: target,
+                actualSize: shorterSize,
+                visibleFrame: vf
+            )
+            XCTAssertEqual(anchored.maxY, vf.maxY, "Vertical column \(action.rawValue) should anchor to top edge")
+            XCTAssertEqual(anchored.height, shorterSize.height)
+        }
+
+        for bottomAction in [WindowManagerAction.bottomHalf, .bottomLeft, .bottomRight] {
+            let target = WindowGeometryEngine.rect(for: bottomAction, current: .zero, visibleFrame: vf)
+            let anchored = WindowGeometryEngine.anchoredRect(
+                for: bottomAction,
+                targetRect: target,
+                actualSize: CGSize(width: 400, height: 300),
+                visibleFrame: vf
+            )
+            XCTAssertEqual(anchored.minY, vf.minY, "Bottom action \(bottomAction.rawValue) should remain bottom-anchored")
+        }
+    }
+
+    func testSnapZoneEnabledStorageRoundTrip() {
+        XCTAssertEqual(WindowSnapZone.enabledZones(from: nil), Set(WindowSnapZone.allCases))
+        XCTAssertEqual(WindowSnapZone.enabledZones(from: ""), Set(WindowSnapZone.allCases))
+        XCTAssertEqual(WindowSnapZone.disabledStorageValue(from: Set(WindowSnapZone.allCases)), "")
+
+        let subset: Set<WindowSnapZone> = [.left, .right, .topLeft, .bottomRight]
+        let stored = WindowSnapZone.disabledStorageValue(from: subset)
+        XCTAssertEqual(WindowSnapZone.enabledZones(from: stored), subset)
+
+        let noneStored = WindowSnapZone.disabledStorageValue(from: [])
+        XCTAssertEqual(WindowSnapZone.enabledZones(from: noneStored), [])
+    }
+
+    func testResolvedShortcutAndCompactProfileDefaults() {
+        let fallback = GlobalShortcut(keyCode: Int64(kVK_ANSI_A), modifiers: [.control, .option])
+        let custom = GlobalShortcut(keyCode: Int64(kVK_ANSI_Z), modifiers: [.control, .command])
+
+        XCTAssertEqual(WindowManagerAction.resolvedShortcut(storedValue: nil, defaultShortcut: fallback), fallback)
+        XCTAssertNil(WindowManagerAction.resolvedShortcut(storedValue: WindowManagerAction.clearedShortcutStorageValue, defaultShortcut: fallback))
+        XCTAssertNil(WindowManagerAction.resolvedShortcut(storedValue: "", defaultShortcut: fallback))
+        XCTAssertEqual(WindowManagerAction.resolvedShortcut(storedValue: custom.storageValue, defaultShortcut: fallback), custom)
+        XCTAssertEqual(WindowManagerAction.resolvedShortcut(storedValue: "invalid", defaultShortcut: fallback), fallback)
+
+        let compactMods: GlobalShortcutModifiers = [.control, .command]
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .leftHalf),
+                       GlobalShortcut(keyCode: Int64(kVK_LeftArrow), modifiers: compactMods))
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .rightHalf),
+                       GlobalShortcut(keyCode: Int64(kVK_RightArrow), modifiers: compactMods))
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .topHalf),
+                       GlobalShortcut(keyCode: Int64(kVK_UpArrow), modifiers: compactMods))
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .bottomHalf),
+                       GlobalShortcut(keyCode: Int64(kVK_DownArrow), modifiers: compactMods))
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .maximize),
+                       GlobalShortcut(keyCode: Int64(kVK_Return), modifiers: compactMods))
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .nextDisplay),
+                       GlobalShortcut(keyCode: Int64(kVK_RightArrow), modifiers: [.control, .option, .command]))
+        XCTAssertEqual(WindowShortcutProfile.compact.defaultShortcut(for: .previousDisplay),
+                       GlobalShortcut(keyCode: Int64(kVK_LeftArrow), modifiers: [.control, .option, .command]))
+        XCTAssertNil(WindowShortcutProfile.compact.defaultShortcut(for: .leftQuarter))
+        XCTAssertNil(WindowShortcutProfile.compact.defaultShortcut(for: .centerHalf))
+    }
+
+    func testWindowManagerMonitorsPermissionChangesWhenEnabled() {
+        XCTAssertTrue(AppFeature.windowManager.monitorsPermissionChanges(boolFor: { _ in true }))
+        XCTAssertFalse(AppFeature.notchWatch.monitorsPermissionChanges(boolFor: { _ in true }))
     }
 }

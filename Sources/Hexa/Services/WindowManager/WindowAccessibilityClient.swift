@@ -25,7 +25,8 @@ enum WindowAccessibilityClient {
     private typealias AXUIElementGetWindowFn = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
 
     private static let axGetWindow: AXUIElementGetWindowFn? = {
-        guard let sym = dlsym(dlopen(nil, RTLD_LAZY), "_AXUIElementGetWindow") else { return nil }
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2) /* RTLD_DEFAULT */,
+                              "_AXUIElementGetWindow") else { return nil }
         return unsafeBitCast(sym, to: AXUIElementGetWindowFn.self)
     }()
 
@@ -83,17 +84,13 @@ enum WindowAccessibilityClient {
             let axApp = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(axApp, defaultMessagingTimeout)
 
-            if hasExternalFront {
-                guard let window = windowAttribute(axApp, kAXFocusedWindowAttribute as String)
-                        ?? windowAttribute(axApp, kAXMainWindowAttribute as String) else { return nil }
-                return makeTarget(from: window, app: app, onScreenIDs: onScreenIDs)
-            }
             for attr in [kAXFocusedWindowAttribute, kAXMainWindowAttribute] {
                 if let win = windowAttribute(axApp, attr as String),
                    let target = makeTarget(from: win, app: app, onScreenIDs: onScreenIDs) {
                     return target
                 }
             }
+            if hasExternalFront { return nil }
             if let windows = windowsAttribute(axApp) {
                 for win in windows {
                     if let target = makeTarget(from: win, app: app, onScreenIDs: onScreenIDs) {
@@ -242,8 +239,8 @@ enum WindowAccessibilityClient {
             }
             if let finalFrame = frame(of: window) {
                 if finalFrame.isClose(to: desiredFrame, tolerance: WindowGeometryEngine.frameTolerance)
-                    || (!finalFrame.isClose(to: initialFrame, tolerance: 1)
-                        && finalFrame.isClose(to: WindowFrame(rect: anchoredQuartz), tolerance: 1)) {
+                    || finalFrame.isClose(to: WindowFrame(rect: anchoredQuartz),
+                                          tolerance: WindowGeometryEngine.frameTolerance) {
                     return finalFrame
                 }
             }

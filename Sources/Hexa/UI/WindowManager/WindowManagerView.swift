@@ -12,6 +12,7 @@ struct WindowManagerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = WindowManagerService.shared
     @ObservedObject private var permissions = Permissions.shared
+    @State private var permissionDemandID = UUID()
 
     private var text: WindowManagerStrings { FeatureStrings.windowManager(l10n.language) }
 
@@ -26,6 +27,13 @@ struct WindowManagerView: View {
         .padding(.horizontal, HexaTheme.Spacing.xxl)
         .onAppear {
             service.syncWithPreferences()
+            permissions.setActivePermissionSurface(permissionDemandID, visible: !permissions.accessibility)
+        }
+        .onChange(of: permissions.accessibility) { _, _ in
+            permissions.setActivePermissionSurface(permissionDemandID, visible: !permissions.accessibility)
+        }
+        .onDisappear {
+            permissions.setActivePermissionSurface(permissionDemandID, visible: false)
         }
     }
 

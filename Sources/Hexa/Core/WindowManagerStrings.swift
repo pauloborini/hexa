@@ -239,7 +239,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Accessibility permission is required to read and reposition windows from other apps.",
         statusAppliedFormat: "Applied: %@",
         statusRestored: "Restored previous window size.",
-        statusNoWindow: "No resizable external window is available.",
+        statusNoWindow: "No external window is available to position.",
         statusNoRestore: "No previous window position to restore.",
         statusFailed: "Could not reposition the active window."
     )
@@ -321,7 +321,7 @@ extension WindowManagerStrings {
         needsAccessibility: "A permissão de Acessibilidade é necessária para ler e reposicionar janelas de outros apps.",
         statusAppliedFormat: "Aplicado: %@",
         statusRestored: "Posição anterior da janela restaurada.",
-        statusNoWindow: "Nenhuma janela externa redimensionável disponível.",
+        statusNoWindow: "Nenhuma janela externa disponível para posicionar.",
         statusNoRestore: "Nenhuma posição anterior para restaurar.",
         statusFailed: "Não foi possível reposicionar a janela ativa."
     )
@@ -403,7 +403,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Diğer uygulamaların pencerelerini okumak ve taşımak için Erişilebilirlik izni gerekir.",
         statusAppliedFormat: "Uygulandı: %@",
         statusRestored: "Önceki pencere boyutu geri yüklendi.",
-        statusNoWindow: "Yeniden boyutlandırılabilir harici pencere yok.",
+        statusNoWindow: "Konumlandırılabilecek harici pencere yok.",
         statusNoRestore: "Geri yüklenecek önceki pencere konumu yok.",
         statusFailed: "Etkin pencere yeniden konumlandırılamadı."
     )
@@ -485,7 +485,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Для чтения и перемещения окон других приложений требуется Универсальный доступ.",
         statusAppliedFormat: "Применено: %@",
         statusRestored: "Предыдущий размер окна восстановлен.",
-        statusNoWindow: "Нет подходящего внешнего окна.",
+        statusNoWindow: "Нет доступного внешнего окна для размещения.",
         statusNoRestore: "Нет сохранённой позиции для возврата.",
         statusFailed: "Не удалось переместить активное окно."
     )
@@ -567,7 +567,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Se necesita permiso de Accesibilidad para leer y reposicionar ventanas de otras apps.",
         statusAppliedFormat: "Aplicado: %@",
         statusRestored: "Se restauró el tamaño anterior de la ventana.",
-        statusNoWindow: "No hay ninguna ventana externa redimensionable disponible.",
+        statusNoWindow: "No hay ninguna ventana externa disponible para posicionar.",
         statusNoRestore: "No hay ninguna posición anterior para restaurar.",
         statusFailed: "No se pudo reposicionar la ventana activa."
     )
@@ -649,7 +649,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Na čítanie a presúvanie okien iných aplikácií je potrebné oprávnenie Prístupnosť.",
         statusAppliedFormat: "Použité: %@",
         statusRestored: "Predchádzajúca veľkosť okna bola obnovená.",
-        statusNoWindow: "Nie je dostupné žiadne externé okno so zmeniteľnou veľkosťou.",
+        statusNoWindow: "Nie je dostupné žiadne externé okno na umiestnenie.",
         statusNoRestore: "Žiadna predchádzajúca pozícia na obnovenie.",
         statusFailed: "Aktívne okno sa nepodarilo presunúť."
     )
@@ -731,7 +731,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Bedienungshilfen sind erforderlich, um Fenster anderer Apps zu lesen und zu verschieben.",
         statusAppliedFormat: "Angewendet: %@",
         statusRestored: "Vorherige Fenstergröße wiederhergestellt.",
-        statusNoWindow: "Kein veränderbares externes Fenster verfügbar.",
+        statusNoWindow: "Kein externes Fenster zum Positionieren verfügbar.",
         statusNoRestore: "Keine vorherige Fensterposition vorhanden.",
         statusFailed: "Das aktive Fenster konnte nicht bewegt werden."
     )
@@ -813,7 +813,7 @@ extension WindowManagerStrings {
         needsAccessibility: "L’autorisation d’accessibilité est requise pour lire et repositionner les fenêtres d’autres apps.",
         statusAppliedFormat: "Appliqué : %@",
         statusRestored: "Taille précédente de la fenêtre rétablie.",
-        statusNoWindow: "Aucune fenêtre externe redimensionnable disponible.",
+        statusNoWindow: "Aucune fenêtre externe disponible pour le positionnement.",
         statusNoRestore: "Aucune position précédente à rétablir.",
         statusFailed: "Impossible de repositionner la fenêtre active."
     )
@@ -895,7 +895,7 @@ extension WindowManagerStrings {
         needsAccessibility: "È richiesto il permesso di Accessibilità per leggere e riposizionare le finestre di altre app.",
         statusAppliedFormat: "Applicato: %@",
         statusRestored: "Dimensione precedente della finestra ripristinata.",
-        statusNoWindow: "Nessuna finestra esterna ridimensionabile disponibile.",
+        statusNoWindow: "Nessuna finestra esterna disponibile da posizionare.",
         statusNoRestore: "Nessuna posizione precedente da ripristinare.",
         statusFailed: "Impossibile riposizionare la finestra attiva."
     )
@@ -977,7 +977,7 @@ extension WindowManagerStrings {
         needsAccessibility: "他アプリのウィンドウを読み取り・移動するにはアクセシビリティ権限が必要です。",
         statusAppliedFormat: "適用: %@",
         statusRestored: "元のウィンドウサイズに戻しました。",
-        statusNoWindow: "サイズ変更可能な外部ウィンドウがありません。",
+        statusNoWindow: "配置できる外部ウィンドウがありません。",
         statusNoRestore: "復元できる以前の位置がありません。",
         statusFailed: "アクティブウィンドウを移動できませんでした。"
     )
@@ -1059,7 +1059,7 @@ extension WindowManagerStrings {
         needsAccessibility: "다른 앱의 창을 읽고 이동하려면 손쉬운 사용 권한이 필요합니다.",
         statusAppliedFormat: "적용됨: %@",
         statusRestored: "이전 창 크기를 복원했습니다.",
-        statusNoWindow: "크기를 조절할 수 있는 외부 창이 없습니다.",
+        statusNoWindow: "배치할 수 있는 외부 창이 없습니다.",
         statusNoRestore: "복원할 이전 창 위치가 없습니다.",
         statusFailed: "활성 창의 위치를 변경할 수 없습니다."
     )
@@ -1141,7 +1141,7 @@ extension WindowManagerStrings {
         needsAccessibility: "Для читання й переміщення вікон інших програм потрібен Універсальний доступ.",
         statusAppliedFormat: "Застосовано: %@",
         statusRestored: "Попередній розмір вікна відновлено.",
-        statusNoWindow: "Немає зовнішнього вікна зі змінюваним розміром.",
+        statusNoWindow: "Немає зовнішнього вікна, доступного для розміщення.",
         statusNoRestore: "Немає збереженої позиції для відновлення.",
         statusFailed: "Не вдалося перемістити активне вікно."
     )
@@ -1223,7 +1223,7 @@ extension WindowManagerStrings {
         needsAccessibility: "需要辅助功能权限才能读取并调整其他应用的窗口位置。",
         statusAppliedFormat: "已应用：%@",
         statusRestored: "已还原先前的窗口大小。",
-        statusNoWindow: "没有可调整大小的外部窗口。",
+        statusNoWindow: "没有可调整位置的外部窗口。",
         statusNoRestore: "没有可还原的历史位置。",
         statusFailed: "无法调整当前窗口的位置。"
     )
@@ -1305,7 +1305,7 @@ extension WindowManagerStrings {
         needsAccessibility: "需要輔助使用權限才能讀取並調整其他 App 的視窗位置。",
         statusAppliedFormat: "已套用：%@",
         statusRestored: "已還原先前的視窗大小。",
-        statusNoWindow: "沒有可調整大小的外部視窗。",
+        statusNoWindow: "沒有可調整位置的外部視窗。",
         statusNoRestore: "沒有可還原的先前位置。",
         statusFailed: "無法調整目前視窗的位置。"
     )
@@ -1387,7 +1387,7 @@ extension WindowManagerStrings {
         needsAccessibility: "需要輔助使用權限以讀取並調整其他 App 的視窗位置。",
         statusAppliedFormat: "已套用：%@",
         statusRestored: "已還原先前的視窗大小。",
-        statusNoWindow: "沒有可調整大小的外部視窗。",
+        statusNoWindow: "沒有可調整位置的外部視窗。",
         statusNoRestore: "沒有可還原的先前位置。",
         statusFailed: "未能調整目前視窗的位置。"
     )

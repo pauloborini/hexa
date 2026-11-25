@@ -9,6 +9,7 @@ import SwiftUI
 struct WindowLayoutGridVisualizer: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = WindowManagerService.shared
+    @AppStorage(DefaultsKey.windowLayoutShortcutsEnabled) private var shortcutsEnabled = false
 
     private var text: WindowManagerStrings { FeatureStrings.windowManager(l10n.language) }
 
@@ -17,6 +18,7 @@ struct WindowLayoutGridVisualizer: View {
     ]
 
     var body: some View {
+        let _ = service.shortcutRevision
         VStack(alignment: .leading, spacing: HexaTheme.Spacing.l) {
             ForEach(WindowManagerAction.Category.allCases, id: \.self) { category in
                 let actions = WindowManagerAction.allCases.filter { $0.category == category }
@@ -26,7 +28,7 @@ struct WindowLayoutGridVisualizer: View {
                             WindowLayoutActionTile(
                                 action: action,
                                 title: text.actionTitle(action),
-                                shortcutText: action.savedShortcut()?.displayString
+                                shortcutText: shortcutsEnabled ? action.savedShortcut()?.displayString : nil
                             ) {
                                 service.apply(action)
                             }

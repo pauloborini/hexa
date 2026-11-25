@@ -69,8 +69,8 @@ extension AppFeature {
     /// polling for those just because their tile is installed wastes wakeups.
     func monitorsPermissionChanges(boolFor: (String) -> Bool) -> Bool {
         switch self {
-        case .notchWatch, .windowManager:
-            // These features check on activation or when handling an event.
+        case .notchWatch:
+            // This feature checks on activation or when handling an event.
             return false
         default:
             return true
