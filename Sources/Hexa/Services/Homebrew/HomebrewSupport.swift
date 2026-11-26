@@ -195,7 +195,14 @@ struct HomebrewOperation {
     }
 
     let action: Action
-    let package: HomebrewPackage?
+    let packages: [HomebrewPackage]
+
+    var package: HomebrewPackage? { packages.first }
+
+    init(action: Action, package: HomebrewPackage? = nil, packages: [HomebrewPackage]? = nil) {
+        self.action = action
+        self.packages = packages ?? package.map { [$0] } ?? []
+    }
 }
 
 enum HomebrewOperationPhase: Equatable {
@@ -217,7 +224,7 @@ enum HomebrewOperationResult: Equatable {
 
 struct HomebrewOperationStatus: Equatable {
     var action: HomebrewOperation.Action
-    var package: HomebrewPackage?
+    var packages: [HomebrewPackage]
     var phase: HomebrewOperationPhase
     var result: HomebrewOperationResult
     var progressFraction: Double?
@@ -225,12 +232,33 @@ struct HomebrewOperationStatus: Equatable {
     var finishedAt: Date?
     var lastActivity: String?
 
+    var package: HomebrewPackage? { packages.first }
+
     var isActive: Bool {
         result == .running
     }
 
     var targetID: String {
-        package?.id ?? "homebrew:\(action)"
+        packages.isEmpty ? "homebrew:\(action)" : packages.map(\.id).joined(separator: "+")
+    }
+
+    init(action: HomebrewOperation.Action,
+         package: HomebrewPackage? = nil,
+         packages: [HomebrewPackage]? = nil,
+         phase: HomebrewOperationPhase,
+         result: HomebrewOperationResult,
+         progressFraction: Double?,
+         startedAt: Date,
+         finishedAt: Date?,
+         lastActivity: String?) {
+        self.action = action
+        self.packages = packages ?? package.map { [$0] } ?? []
+        self.phase = phase
+        self.result = result
+        self.progressFraction = progressFraction
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.lastActivity = lastActivity
     }
 }
 
@@ -337,6 +365,13 @@ enum HomebrewCommandBuilder {
         if package.kind == .cask { args.append("--cask") }
         args.append(package.name)
         return HomebrewCommand(executable: brewPath, arguments: args)
+    }
+
+    static func uninstallCasks(brewPath: String, packages: [HomebrewPackage]) -> HomebrewCommand? {
+        let valid = packages.filter { $0.kind == .cask && isValidToken($0.name) }
+        guard valid.count == packages.count, !valid.isEmpty else { return nil }
+        return HomebrewCommand(executable: brewPath,
+                               arguments: ["uninstall", "--cask"] + valid.map(\.name))
     }
 
     static func isValidToken(_ token: String) -> Bool {

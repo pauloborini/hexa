@@ -82,6 +82,14 @@ final class HomebrewManager: ObservableObject {
         perform(.uninstall, package: package)
     }
 
+    /// Removes several casks in one brew invocation when a batch uninstall
+    /// selects more than one package-managed app. The single operation lane
+    /// still guarantees that no two brew commands run together.
+    func uninstallCasks(_ packages: [HomebrewPackage]) {
+        guard let first = packages.first else { return }
+        perform(.uninstall, package: first, packages: packages)
+    }
+
     /// Looks up whether Homebrew owns this exact app bundle. The cached
     /// installed catalog is reused when fresh; otherwise one read-only command
     /// answers every concurrent request for the same path.
@@ -194,14 +202,16 @@ final class HomebrewManager: ObservableObject {
 
     private func perform(_ action: HomebrewOperation.Action,
                          package: HomebrewPackage?,
+                         packages requestedPackages: [HomebrewPackage]? = nil,
                          command commandOverride: HomebrewCommand? = nil) {
         guard operation == nil else { return }
         guard let brewPath = brewPath ?? detectBrewPath() else { return }
+        let packages = requestedPackages ?? package.map { [$0] } ?? []
         guard let command = commandOverride
-                ?? standardCommand(for: action, package: package, brewPath: brewPath) else { return }
-        operation = HomebrewOperation(action: action, package: package)
+                ?? standardCommand(for: action, package: package, packages: packages, brewPath: brewPath) else { return }
+        operation = HomebrewOperation(action: action, packages: packages)
         operationStatus = HomebrewOperationStatus(action: action,
-                                                  package: package,
+                                                  packages: packages,
                                                   phase: initialPhase(for: action),
                                                   result: .running,
                                                   progressFraction: nil,
@@ -246,7 +256,7 @@ final class HomebrewManager: ObservableObject {
                     // The retry repeats the exact command, so a cask selection
                     // never widens into a plain `brew upgrade`.
                     self.presentUntrustedTap(tap) { [weak self] in
-                        self?.perform(action, package: package, command: commandOverride)
+                        self?.perform(action, package: package, packages: packages, command: commandOverride)
                     }
                     self.markOperationComplete(result: .failed,
                                                phase: self.operationStatus?.phase ?? .finalizing,
@@ -278,9 +288,13 @@ final class HomebrewManager: ObservableObject {
 
     private func standardCommand(for action: HomebrewOperation.Action,
                                  package: HomebrewPackage?,
+                                 packages: [HomebrewPackage],
                                  brewPath: String) -> HomebrewCommand? {
         switch action {
         case .uninstall:
+            if packages.count > 1 {
+                return HomebrewCommandBuilder.uninstallCasks(brewPath: brewPath, packages: packages)
+            }
             guard let package,
                   HomebrewCommandBuilder.isValidToken(package.name) else { return nil }
             return HomebrewCommandBuilder.uninstall(brewPath: brewPath, package: package)

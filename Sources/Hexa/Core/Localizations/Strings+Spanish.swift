@@ -306,6 +306,8 @@ extension Strings {
         uninstallerDropSubtitle: "o elige una para analizar",
         uninstallerChoose: "Elegir app…",
         uninstallerPickerTitle: "Elegir app",
+        uninstallerPickerMultiTitle: "Elegir apps",
+        uninstallerPickerScanSelection: "Analizar selección",
         uninstallerPickerSearch: "Buscar apps",
         uninstallerPickerEmpty: "No se encontraron apps",
         uninstallerEmptyNote: "No se elimina nada sin tu confirmación.",

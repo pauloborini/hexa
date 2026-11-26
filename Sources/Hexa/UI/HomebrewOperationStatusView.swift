@@ -217,7 +217,8 @@ struct HomebrewOperationStatusView: View {
     }
 
     private var packageDisplayName: String {
-        status.package?.displayName ?? l10n.s.homebrewAllPackages
+        guard !status.packages.isEmpty else { return l10n.s.homebrewAllPackages }
+        return status.packages.map(\.displayName).joined(separator: ", ")
     }
 
     private var iconName: String {

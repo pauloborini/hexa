@@ -294,6 +294,8 @@ extension Strings {
         uninstallerDropSubtitle: "або виберіть одну для сканування",
         uninstallerChoose: "Вибрати програму…",
         uninstallerPickerTitle: "Виберіть програму",
+        uninstallerPickerMultiTitle: "Виберіть програми",
+        uninstallerPickerScanSelection: "Сканувати вибране",
         uninstallerPickerSearch: "Шукати програми",
         uninstallerPickerEmpty: "Програми не знайдені",
         uninstallerEmptyNote: "Нічого не видаляється без вашого підтвердження.",

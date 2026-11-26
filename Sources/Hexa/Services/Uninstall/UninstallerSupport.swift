@@ -191,6 +191,8 @@ enum UninstallerSupport {
 
     /// Evaluates whether the uninstaller accepts an app URL, returning the
     /// structured refusal reason when rejected.
+    static func droppedSelectionURLs(_ urls: [URL]) -> [URL] { urls }
+
     static func evaluateSelection(for appURL: URL) -> Result<Selection, SelectionRefusal> {
         // Browser links are not bundles on disk and must be refused before loading one.
         guard appURL.isFileURL else { return .failure(.unidentifiedOrProtected) }

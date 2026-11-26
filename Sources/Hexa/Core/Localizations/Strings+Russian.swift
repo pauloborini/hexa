@@ -307,6 +307,8 @@ extension Strings {
         uninstallerDropSubtitle: "или выберите одно для сканирования",
         uninstallerChoose: "Выбрать приложение…",
         uninstallerPickerTitle: "Выберите приложение",
+        uninstallerPickerMultiTitle: "Выберите приложения",
+        uninstallerPickerScanSelection: "Сканировать выбранное",
         uninstallerPickerSearch: "Искать приложения",
         uninstallerPickerEmpty: "Приложения не найдены",
         uninstallerEmptyNote: "Ничего не удаляется без вашего подтверждения.",
