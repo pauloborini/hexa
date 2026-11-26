@@ -3,6 +3,263 @@
 
 # Changelog
 
+## [0.4.0] - 2026-11-26
+
+<!-- locale: en-US -->
+### Window Manager
+- Move and resize windows with configurable shortcuts, a visual grid and magnetic drag-to-edge snapping.
+- Position cycling, minimum-size anchoring and multi-display transfers keep windows inside the visible area. The module is available in Features and is not installed automatically during an update.
+
+### Screenshot and OCR
+- Frozen-screen area capture can capture the window under the cursor with a click and better preserves protected layers or video.
+- OCR, barcode detection and editing are more efficient and use memory more carefully.
+
+### Displays and monitoring
+- External display control is more reliable across DDC, HDMI adapters and keyboard backlight handling.
+- Disk metrics use native I/O extraction and avoid unsupported monitoring paths.
+
+### Batch uninstall
+- Select or drop several apps, scan them together and review each app's leftovers without preselected items.
+- Homebrew apps selected in the same batch can be removed in one confirmed brew operation.
+
+<!-- locale: pt-BR -->
+### Gerenciador de janelas
+- Mova e redimensione janelas com atalhos configuráveis, grade visual e encaixe magnético ao arrastar para as bordas.
+- Ciclo de posições, ancoragem de tamanho mínimo e transferência entre monitores mantêm as janelas na área visível. O módulo fica disponível em Recursos e não é instalado automaticamente na atualização.
+
+### Captura e OCR
+- A captura de área com tela congelada permite clicar na janela sob o cursor e preserva melhor camadas protegidas ou vídeo.
+- OCR, detecção de códigos de barras e edição ficaram mais eficientes e usam memória com mais cuidado.
+
+### Telas e monitoramento
+- O controle de monitores externos fica mais confiável com DDC, adaptadores HDMI e ajustes da luz do teclado.
+- As métricas de disco usam extração nativa de E/S e evitam caminhos de monitoramento não suportados.
+
+### Desinstalação em lote
+- Selecione ou arraste vários apps, analise todos juntos e revise as sobras de cada um sem nada pré-selecionado.
+- Apps do Homebrew escolhidos no mesmo lote podem ser removidos em uma única operação confirmada do brew.
+
+<!-- locale: tr -->
+### Pencere yöneticisi
+- Pencereleri yapılandırılabilir kısayollar, görsel bir ızgara ve kenara sürükleyince manyetik yerleştirme ile taşıyıp yeniden boyutlandırın.
+- Konum döngüsü, minimum boyut sabitlemesi ve çoklu ekran aktarımları pencereleri görünür alanda tutar. Modül Özellikler içinde sunulur ve güncelleme sırasında kendiliğinden kurulmaz.
+
+### Ekran görüntüsü ve OCR
+- Dondurulmuş ekranla alan yakalama, imlecin altındaki pencereyi tek tıklamayla yakalayabilir ve korumalı katmanları veya videoyu daha iyi korur.
+- OCR, barkod algılama ve düzenleme daha verimli çalışır ve belleği daha dikkatli kullanır.
+
+### Ekranlar ve izleme
+- Harici ekran denetimi DDC, HDMI adaptörleri ve klavye aydınlatmasıyla daha güvenilir çalışır.
+- Disk ölçümleri yerel G/Ç çıkarımı kullanır ve desteklenmeyen izleme yollarından kaçınır.
+
+### Toplu kaldırma
+- Birden çok uygulamayı seçin veya bırakın, birlikte tarayın ve hiçbir öğe önceden seçilmeden her uygulamanın kalıntılarını inceleyin.
+- Aynı grupta seçilen Homebrew uygulamaları, onaylanan tek bir brew işlemiyle kaldırılabilir.
+
+<!-- locale: ru -->
+### Менеджер окон
+- Перемещайте и изменяйте размер окон настраиваемыми сочетаниями клавиш, визуальной сеткой и магнитной привязкой при перетаскивании к краям.
+- Цикл позиций, привязка минимального размера и перенос между мониторами удерживают окна в видимой области. Модуль доступен в каталоге функций и не устанавливается автоматически при обновлении.
+
+### Снимки экрана и OCR
+- Захват области с замороженным экраном позволяет одним нажатием захватить окно под курсором и лучше сохраняет защищенные слои или видео.
+- OCR, распознавание штрихкодов и редактирование стали эффективнее и аккуратнее используют память.
+
+### Экраны и мониторинг
+- Управление внешними мониторами стало надежнее при работе с DDC, адаптерами HDMI и подсветкой клавиатуры.
+- Метрики дисков используют нативное извлечение данных ввода-вывода и избегают неподдерживаемые пути мониторинга.
+
+### Пакетное удаление
+- Выберите или перетащите несколько приложений, проверьте их вместе и просмотрите остатки каждого приложения без предварительно выбранных элементов.
+- Приложения Homebrew, выбранные в одном пакете, можно удалить одной подтвержденной операцией brew.
+
+<!-- locale: es -->
+### Gestor de ventanas
+- Mueve y redimensiona ventanas con atajos configurables, una cuadrícula visual y ajuste magnético al arrastrarlas hacia los bordes.
+- El ciclo de posiciones, el anclaje del tamaño mínimo y la transferencia entre pantallas mantienen las ventanas dentro del área visible. El módulo está disponible en Recursos y no se instala automáticamente al actualizar.
+
+### Captura y OCR
+- La captura de área con pantalla congelada puede capturar con un clic la ventana bajo el cursor y preserva mejor capas protegidas o vídeo.
+- OCR, detección de códigos de barras y edición son más eficientes y usan la memoria con más cuidado.
+
+### Pantallas y monitorización
+- El control de pantallas externas es más fiable con DDC, adaptadores HDMI y la luz del teclado.
+- Las métricas de disco usan extracción nativa de E/S y evitan rutas de monitorización no admitidas.
+
+### Desinstalación por lotes
+- Selecciona o arrastra varias apps, analízalas juntas y revisa los restos de cada una sin elementos preseleccionados.
+- Las apps de Homebrew elegidas en el mismo lote pueden eliminarse en una sola operación confirmada de brew.
+
+<!-- locale: sk -->
+### Správca okien
+- Presúvajte a meňte veľkosť okien pomocou konfigurovateľných skratiek, vizuálnej mriežky a magnetického prichytenia pri ťahaní k okrajom.
+- Cyklus pozícií, ukotvenie minimálnej veľkosti a prenos medzi monitormi udržujú okná vo viditeľnej oblasti. Modul je dostupný v katalógu funkcií a počas aktualizácie sa neinštaluje automaticky.
+
+### Snímky obrazovky a OCR
+- Snímanie oblasti so zamrznutou obrazovkou dokáže jedným kliknutím zachytiť okno pod kurzorom a lepšie zachová chránené vrstvy alebo video.
+- OCR, detekcia čiarových kódov a úpravy sú efektívnejšie a šetrnejšie používajú pamäť.
+
+### Obrazovky a monitorovanie
+- Ovládanie externých monitorov je spoľahlivejšie s DDC, adaptérmi HDMI a podsvietením klávesnice.
+- Metriky diskov používajú natívne získavanie I/O a vyhýbajú sa nepodporovaným cestám monitorovania.
+
+### Dávkové odinštalovanie
+- Vyberte alebo presuňte viacero aplikácií, skenujte ich spolu a skontrolujte zvyšky každej aplikácie bez vopred vybraných položiek.
+- Aplikácie Homebrew vybrané v rovnakej dávke možno odstrániť jednou potvrdenou operáciou brew.
+
+<!-- locale: de -->
+### Fensterverwaltung
+- Verschiebe Fenster und ändere ihre Größe mit konfigurierbaren Kurzbefehlen, einem visuellen Raster und magnetischem Einrasten beim Ziehen an Bildschirmränder.
+- Positionswechsel, Verankerung der Mindestgröße und Übergaben zwischen Monitoren halten Fenster im sichtbaren Bereich. Das Modul ist im Funktionskatalog verfügbar und wird bei einem Update nicht automatisch installiert.
+
+### Bildschirmfotos und OCR
+- Die Bereichsaufnahme mit eingefrorenem Bildschirm kann das Fenster unter dem Zeiger mit einem Klick aufnehmen und bewahrt geschützte Ebenen oder Videos zuverlässiger.
+- OCR, Barcodeerkennung und Bearbeitung arbeiten effizienter und gehen schonender mit dem Speicher um.
+
+### Monitore und Überwachung
+- Die Steuerung externer Monitore ist mit DDC, HDMI-Adaptern und Tastaturbeleuchtung zuverlässiger.
+- Laufwerksmetriken nutzen native I/O-Erfassung und vermeiden nicht unterstützte Überwachungspfade.
+
+### Stapeldeinstallation
+- Wähle mehrere Apps aus oder lege sie ab, scanne sie gemeinsam und prüfe die Reste jeder App ohne vorausgewählte Objekte.
+- Homebrew-Apps im selben Stapel können in einem bestätigten brew-Vorgang entfernt werden.
+
+<!-- locale: fr -->
+### Gestionnaire de fenêtres
+- Déplacez et redimensionnez les fenêtres avec des raccourcis configurables, une grille visuelle et un accrochage magnétique lorsqu’elles sont glissées vers les bords.
+- Le cycle de positions, l’ancrage de la taille minimale et le transfert entre écrans gardent les fenêtres dans la zone visible. Le module est disponible dans le catalogue de fonctionnalités et n’est pas installé automatiquement pendant une mise à jour.
+
+### Captures et OCR
+- La capture de zone avec écran figé peut capturer la fenêtre sous le curseur d’un clic et préserve mieux les calques protégés ou la vidéo.
+- L’OCR, la détection des codes-barres et l’édition sont plus efficaces et utilisent la mémoire avec plus de soin.
+
+### Écrans et monitoring
+- Le contrôle des écrans externes est plus fiable avec DDC, les adaptateurs HDMI et le rétroéclairage du clavier.
+- Les métriques de disque utilisent une extraction native des E/S et évitent les chemins de surveillance non pris en charge.
+
+### Désinstallation par lot
+- Sélectionnez ou déposez plusieurs apps, analysez-les ensemble et examinez les restes de chacune sans élément présélectionné.
+- Les apps Homebrew choisies dans le même lot peuvent être supprimées dans une seule opération brew confirmée.
+
+<!-- locale: it -->
+### Gestore finestre
+- Sposta e ridimensiona le finestre con scorciatoie configurabili, una griglia visiva e l’aggancio magnetico trascinandole verso i bordi.
+- Il ciclo delle posizioni, l’ancoraggio della dimensione minima e il passaggio tra monitor mantengono le finestre nell’area visibile. Il modulo è disponibile nel catalogo delle funzioni e non viene installato automaticamente durante l’aggiornamento.
+
+### Cattura e OCR
+- La cattura dell’area con schermo congelato può catturare con un clic la finestra sotto il cursore e preserva meglio livelli protetti o video.
+- OCR, riconoscimento dei codici a barre e modifica sono più efficienti e usano la memoria con più attenzione.
+
+### Schermi e monitoraggio
+- Il controllo dei monitor esterni è più affidabile con DDC, adattatori HDMI e retroilluminazione della tastiera.
+- Le metriche dei dischi usano l’estrazione nativa di I/O ed evitano percorsi di monitoraggio non supportati.
+
+### Disinstallazione in batch
+- Seleziona o trascina più app, analizzale insieme e controlla i residui di ciascuna senza elementi preselezionati.
+- Le app Homebrew scelte nello stesso batch possono essere rimosse con una sola operazione brew confermata.
+
+<!-- locale: ja -->
+### ウインドウマネージャー
+- 設定可能なショートカット、ビジュアルグリッド、端へのドラッグで吸着するマグネットスナップでウインドウを移動およびサイズ変更できます。
+- 位置サイクル、最小サイズのアンカー、複数ディスプレイ間の移動により、ウインドウを可視領域内に保ちます。このモジュールは機能カタログで利用でき、アップデート時に自動インストールされません。
+
+### スクリーンショットと OCR
+- 画面を固定した範囲キャプチャでは、カーソル下のウインドウをクリックでキャプチャでき、保護されたレイヤーや映像をより確実に保ちます。
+- OCR、バーコード検出、編集がより効率的になり、メモリ使用量も抑えられます。
+
+### ディスプレイとモニタリング
+- DDC、HDMI アダプター、キーボードバックライトの扱いが向上し、外部ディスプレイ制御の信頼性が高まりました。
+- ディスクメトリクスはネイティブな I/O 抽出を使用し、未対応の監視経路を避けます。
+
+### 一括アンインストール
+- 複数のアプリを選択またはドラッグし、まとめてスキャンして、項目を事前選択せずにアプリごとの残存ファイルを確認できます。
+- 同じ一括対象で選んだ Homebrew アプリは、確認済みの 1 回の brew 操作で削除できます。
+
+<!-- locale: ko -->
+### 윈도우 관리자
+- 구성 가능한 단축키, 시각적 격자, 가장자리로 드래그할 때 자석처럼 붙는 스냅으로 창을 이동하고 크기를 조정합니다.
+- 위치 순환, 최소 크기 고정, 여러 디스플레이 간 이동으로 창을 보이는 영역 안에 유지합니다. 이 모듈은 기능 카탈로그에서 사용할 수 있으며 업데이트 중 자동으로 설치되지 않습니다.
+
+### 화면 캡처와 OCR
+- 화면을 고정한 영역 캡처는 커서 아래 창을 클릭 한 번으로 캡처할 수 있으며 보호된 레이어나 비디오를 더 잘 보존합니다.
+- OCR, 바코드 인식, 편집이 더 효율적이며 메모리를 더 신중하게 사용합니다.
+
+### 디스플레이와 모니터링
+- DDC, HDMI 어댑터, 키보드 백라이트 처리가 개선되어 외부 디스플레이 제어가 더 안정적입니다.
+- 디스크 메트릭은 네이티브 I/O 추출을 사용하고 지원되지 않는 모니터링 경로를 피합니다.
+
+### 일괄 제거
+- 여러 앱을 선택하거나 끌어 놓아 함께 스캔하고, 미리 선택된 항목 없이 각 앱의 잔여 파일을 검토합니다.
+- 같은 일괄 작업에서 선택한 Homebrew 앱은 확인된 한 번의 brew 작업으로 제거할 수 있습니다.
+
+<!-- locale: uk -->
+### Менеджер вікон
+- Переміщуйте й змінюйте розмір вікон налаштовуваними скороченнями, візуальною сіткою та магнітним прилипанням під час перетягування до країв.
+- Цикл позицій, прив’язка мінімального розміру та перенесення між моніторами утримують вікна у видимій області. Модуль доступний у каталозі функцій і не встановлюється автоматично під час оновлення.
+
+### Знімки екрана й OCR
+- Захоплення області із застиглим екраном може одним клацанням захопити вікно під курсором і краще зберігає захищені шари або відео.
+- OCR, розпізнавання штрихкодів і редагування стали ефективнішими та ощадливіше використовують пам’ять.
+
+### Екрани й моніторинг
+- Керування зовнішніми моніторами стало надійнішим із DDC, адаптерами HDMI та підсвіткою клавіатури.
+- Метрики дисків використовуют нативне отримання даних вводу-виводу й уникають непідтримуваних шляхів моніторингу.
+
+### Пакетне видалення
+- Виберіть або перетягніть кілька програм, перевірте їх разом і перегляньте залишки кожної без попередньо вибраних елементів.
+- Програми Homebrew, вибрані в одному пакеті, можна видалити однією підтвердженою операцією brew.
+
+<!-- locale: zh-Hans -->
+### 窗口管理器
+- 使用可配置的快捷键、可视化网格和拖到边缘时的磁吸吸附来移动和调整窗口大小。
+- 位置循环、最小尺寸锚定和多显示器转移可让窗口保持在可见区域内。该模块可在功能目录中使用，更新时不会自动安装。
+
+### 截图与 OCR
+- 冻结屏幕的区域截图可单击捕获光标下的窗口，并更好地保留受保护的图层或视频。
+- OCR、条码识别和编辑更高效，也更谨慎地使用内存。
+
+### 显示器与监控
+- 外部显示器控制在 DDC、HDMI 适配器和键盘背光处理方面更可靠。
+- 磁盘指标使用原生 I/O 提取，并避开不受支持的监控路径。
+
+### 批量卸载
+- 选择或拖入多个应用，一起扫描，并在没有预选项目的情况下查看每个应用的残留项。
+- 同一批次中选择的 Homebrew 应用可通过一次经过确认的 brew 操作移除。
+
+<!-- locale: zh-TW -->
+### 視窗管理器
+- 使用可設定的快捷鍵、視覺化格線，以及拖到邊緣時的磁吸貼齊來移動和調整視窗大小。
+- 位置循環、最小尺寸錨定和多顯示器移轉可讓視窗保持在可見範圍內。此模組可在功能目錄中使用，更新時不會自動安裝。
+
+### 截圖與 OCR
+- 凍結畫面的區域截圖可按一下擷取游標下的視窗，並更好地保留受保護的圖層或影片。
+- OCR、條碼辨識和編輯更有效率，也更謹慎地使用記憶體。
+
+### 顯示器與監控
+- 外接顯示器控制在 DDC、HDMI 轉接器和鍵盤背光處理方面更可靠。
+- 磁碟指標使用原生 I/O 擷取，並避開不支援的監控路徑。
+
+### 批次解除安裝
+- 選取或拖入多個 App，一起掃描，並在沒有預選項目的情況下檢視每個 App 的殘留項目。
+- 同一批次選取的 Homebrew App 可透過一次經確認的 brew 操作移除。
+
+<!-- locale: zh-HK -->
+### 視窗管理器
+- 使用可設定的快速鍵、視覺化格網，以及拖至邊緣時的磁吸貼齊來移動和調整視窗大小。
+- 位置循環、最小尺寸錨定和多顯示器轉移可讓視窗保持在可見範圍內。此模組可在功能目錄中使用，更新時不會自動安裝。
+
+### 截圖與 OCR
+- 凍結畫面的區域截圖可按一下擷取游標下的視窗，並更好地保留受保護的圖層或影片。
+- OCR、條碼識別和編輯更有效率，也更謹慎地使用記憶體。
+
+### 顯示器與監察
+- 外接顯示器控制在 DDC、HDMI 轉接器和鍵盤背光處理方面更可靠。
+- 磁碟指標使用原生 I/O 擷取，並避開不支援的監察路徑。
+
+### 批次解除安裝
+- 選取或拖入多個應用程式，一起掃描，並在沒有預選項目的情況下檢視每個應用程式的殘留項目。
+- 同一批次選取的 Homebrew 應用程式可透過一次經確認的 brew 操作移除。
+
 ## [0.3.0] - 2026-11-18
 
 <!-- locale: en-US -->
