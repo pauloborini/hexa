@@ -90,6 +90,10 @@ cd hexa
 
 O aplicativo compilado e assinado localmente estará disponível em `build/hexa.app`. É preciso Xcode 16 ou superior e uma identidade de assinatura no Keychain; no macOS 27, o módulo Ícones da menu bar só funciona em build assinado com Developer ID. Detalhes no [guia de compilação](_app-vault/docs/guides/building.md).
 
+### Atualizações
+
+Em **Sobre**, o botão **Verificar atualizações** consulta o GitHub somente quando você pede, e a nova versão só é instalada depois da sua confirmação (DEC-012). A versão 0.1.0 não tem atualizador: quem a usa instala a 0.2.0 ou superior pelo DMG (DEC-048). O DMG continua valendo como caminho manual de instalação e de recuperação.
+
 ---
 
 ## Transparência de Permissões
@@ -99,7 +103,7 @@ O hexa adota um modelo de **solicitação estritamente sob demanda**: cada permi
 | Permissão | Módulos Requerentes | Finalidade Principal |
 |---|---|---|
 | **Acessibilidade** | Mixer, Brilho, Dynamic Island, Keep Awake, Dock em uma tela, Ícones da menu bar, Gerenciador de janelas | Ajuste de volume por app, controle de luminosidade, posição do Dock, ocultação de itens da barra de menus e posicionamento de janelas por atalhos ou arrasto magnético. |
-| **Gravação de Tela** | Captura de Tela, OCR de Tela, Dynamic Island (Watch) | Captura de janelas, monitoramento de áreas do display e reconhecimento visual de texto. |
+| **Gravação de Tela** | Captura de Tela, OCR de Tela, Dynamic Island (Observar) | Captura de janelas, monitoramento de áreas do display e reconhecimento visual de texto. |
 | **Acesso Total ao Disco** | Cleaner, Uninstaller | Localização e remoção de arquivos residuais e caches em diretórios protegidos (opcional). |
 | **Arquivos e Pastas** | Captura de Tela, Cleaner, Dynamic Island (Downloads) | Gravação direta de capturas na Mesa ou Documentos e acompanhamento de downloads. |
 | **Notificações** | Keep Awake, Dynamic Island (Observar), Cleaner | Avisos operacionais de conclusão de timers e término de rotinas de limpeza. |

@@ -4,7 +4,7 @@ O Hexa reúne os módulos especializados do escopo (DEC-001) em uma única aplic
 
 Cada módulo foi construído sob o princípio de operação sob demanda (DEC-002): painéis e varreduras só rodam quando abertos ou pedidos, sem polling em fundo. As únicas exceções são as nominadas no próprio DEC-002 (atividades da Dynamic Island habilitada, sessão ativa do Fan Control, observadores do Mixer e agendamento do Cleaner configurado pelo usuário) e as leituras opt-in na menu bar (DEC-003).
 
-Os módulos são instalados e desinstalados em **Recursos > Catálogo**; a finalidade de cada permissão e os módulos que a usam ficam em **Recursos > Permissões**. Kill Process, Port Manager, Fan Control, Dock em uma tela, Ícones da menu bar e Gerenciador de janelas vêm desinstalados por padrão.
+Os módulos são instalados e desinstalados em **Recursos > Catálogo**; a finalidade de cada permissão e os módulos que a usam ficam em **Recursos > Permissões**. Kill Process, Port Manager, Fan Control, Dock em uma tela, Ícones da menu bar e Gerenciador de janelas vêm desinstalados por padrão (DEC-050).
 
 ---
 
@@ -222,6 +222,26 @@ Organiza e redimensiona janelas em posições precisas na tela através de atalh
 - **Grade Visual na Janela Operacional:** A tela do módulo no Hexa oferece um seletor visual interativo para aplicar diretamente qualquer layout com um clique do mouse ou navegar por teclado.
 - **Resiliência a Dimensões Mínimas:** Para janelas com restrições rígidas de tamanho mínimo (`minSize`), o motor ancora a janela na área visível da tela em vez de quebrar o enquadramento.
 - **Conformidade Sob Demanda (DEC-002):** Zero polling ou timers em segundo plano. Os listeners são puramente orientados a eventos, acionados apenas quando atalhos globais ou arrastos de janela ocorrem.
+
+---
+
+## Atualização do Hexa (DEC-012, DEC-045 a DEC-049)
+
+Na tela **Sobre**, o botão **Verificar atualizações** consulta o feed do GitHub somente quando você pede (DEC-012). A tela mostra o estado da busca: procurando, versão mais recente, atualização disponível, falha na verificação ou build de desenvolvimento, que não consulta o feed público. Quando há uma versão nova, o diálogo padrão do Sparkle pede sua confirmação, e a instalação só começa depois dela. Antes de substituir o app, a atualização é validada pela assinatura EdDSA, além da assinatura Apple e da notarização (DEC-045).
+
+- **Falha:** a versão instalada continua utilizável, e o botão **Baixar a versão mais recente** abre a página das releases para instalação manual (DEC-047).
+- **Transição a partir da 0.1.0:** a versão 0.1.0 não tem atualizador. Quem a usa instala a 0.2.0 ou superior pelo DMG; as versões seguintes podem vir pelo app (DEC-048).
+- **Não se confunde com App Updates:** o módulo App Updates atualiza apps de terceiros e não lista o próprio Hexa (DEC-049).
+
+---
+
+## Backup de Ajustes (Avançado, DEC-051)
+
+Em **Avançado**, o botão **Exportar configurações** grava as preferências do Hexa em um arquivo `Hexa Settings.plist`. **Importar configurações** substitui as configurações atuais pelas do arquivo e reinicia o app. Antes disso, uma cópia das configurações atuais fica guardada, e **Restaurar configurações anteriores** a devolve.
+
+- Não viajam no arquivo: “Iniciar junto com o Mac”, as permissões do macOS, as pastas escolhidas (capturas e Downloads) e o estado local de cada Mac, como as telas desligadas e a capacidade DDC dos monitores.
+- Atalhos do macOS que o Hexa assumiu voltam ao macOS na importação; reativá-los na máquina de destino é uma escolha nova.
+- Se o arquivo não tiver configurações da Dynamic Island, as desta máquina são mantidas.
 
 ---
 

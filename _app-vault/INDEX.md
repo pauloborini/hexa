@@ -1,6 +1,6 @@
 ---
 vault_version: 1
-updated: 2026-11-16
+updated: 2026-11-25
 scope: decisões de produto do hexa (escopo, comportamento, design do notch, licença, identidade e design system)
 ---
 
@@ -8,12 +8,12 @@ scope: decisões de produto do hexa (escopo, comportamento, design do notch, lic
 
 ## Domains
 
-- [escopo-do-app](docs/decisions/escopo-do-app.md) — os módulos do escopo, comportamento sob demanda, menu bar configurável e ocultação de ícones, Homebrew, idiomas, telemetria, primeira execução e contagem não repetida
+- [escopo-do-app](docs/decisions/escopo-do-app.md) — os módulos do escopo, comportamento sob demanda, menu bar configurável e ocultação de ícones, Homebrew, idiomas, telemetria, primeira execução, módulos novos desligados por padrão, atualização do próprio Hexa na tela Sobre, backup de ajustes e contagem não repetida
 - [dynamic-island](docs/decisions/dynamic-island.md) — Controles como interface padrão e não ocultável, escolha do que a ilha fechada mostra, Reproduzindo Agora opt-in, tamanho do notch e barra de atalhos
 - [uninstaller](docs/decisions/uninstaller.md) — seleção de sobras e atalho selecionar tudo
 - [licenca-e-identidade](docs/decisions/licenca-e-identidade.md) — licença GPL, código-fonte público, release no repositório público, identidade própria e design system
 
-- [versionamento](docs/decisions/versionamento.md) — versão pública inicial, fonte canônica e cobertura do smoke de release
+- [versionamento](docs/decisions/versionamento.md) — versão pública inicial, fonte canônica, cobertura do smoke de release, canal e chave do atualizador próprio, DMG único e transição a partir da 0.1.0
 
 ## Specs (contexto técnico, não decisão)
 
