@@ -27,6 +27,9 @@ enum ShortcutCapture {
         // recording would churn the system keyboard path.
         HotkeyManager.shared.setEnabled(false)
         QuickToolHotkey.unregisterAll()
+        if AppFeature.windowManager.isAvailable {
+            WindowManagerService.shared.syncWithPreferences()
+        }
     }
 
     /// Gives every key back. Safe to call when nothing was suspended, and safe
@@ -37,5 +40,8 @@ enum ShortcutCapture {
         isCapturing = false
         HotkeyManager.shared.syncWithPreferences()
         FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
+        if AppFeature.windowManager.isAvailable {
+            WindowManagerService.shared.syncWithPreferences()
+        }
     }
 }

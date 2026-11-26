@@ -71,10 +71,14 @@ final class ScreenshotSelectionController {
     /// later tool change already replaced never reaches the panels.
     private var sourceGeneration = 0
     private var sourceRefreshPending = false
+    /// Set once a region, window, display or color confirmation starts so late
+    /// key events in the Dynamic Island cannot trigger another capture after
+    /// frozen panels leave the screen.
+    private var capturePending = false
     /// Old pixels and window choices remain visible during refresh, but cannot
     /// be used by either pointer actions or keyboard confirmations.
     fileprivate var acceptsCaptureInput: Bool {
-        !finished && !sourceRefreshPending
+        !finished && !sourceRefreshPending && !capturePending
     }
     fileprivate let requiresDraggedRegion: Bool
     private var finished = false
@@ -481,7 +485,8 @@ final class ScreenshotSelectionController {
     }
 
     private func selectCaptureTool(for event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+        guard acceptsCaptureInput,
+              event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
               let tool = ScreenCaptureTool.matchingShortcut(event.charactersIgnoringModifiers),
               let screenCaptureOptions,
               screenCaptureOptions.availableTools.contains(tool)
@@ -506,12 +511,14 @@ final class ScreenshotSelectionController {
     }
 
     private func toggleScrollingCapture() {
+        guard acceptsCaptureInput else { return }
         guard offersScrollingCapture else { return }
         scrollingCaptureEnabled.toggle()
         panels.forEach { $0.overlayView.refreshPointerState() }
     }
 
     private func toggleLoupe() {
+        guard acceptsCaptureInput else { return }
         loupeEnabled.toggle()
         // Live mode has no frozen shot to sample. Pixels are fetched only
         // when the loupe actually turns on, and fresh each time, so it
@@ -638,6 +645,7 @@ final class ScreenshotSelectionController {
     /// being taken. They are either about to leave the screen or already gone,
     /// and the rest of the gesture must not begin a second capture.
     private func markCapturePending() {
+        capturePending = true
         panels.forEach { $0.overlayView.isCapturePending = true }
     }
 
@@ -680,29 +688,42 @@ final class ScreenshotSelectionController {
             finish(.scrollingRegion(region(fromView: viewRect, on: panel, windowID: nil)))
             return
         }
+        if panel.frozenImage != nil {
+            finishFrozenCrop(at: viewRect, on: panel)
+            return
+        }
         let pixelRect = ScreenshotSupport.imagePixelRect(
             fromView: viewRect,
             viewSize: panel.screenFrame.size,
-            imageSize: panel.frozenImageSize ?? panel.pixelSize)
-        if let frozen = panel.frozenImage {
-            guard let cropped = frozen.cropping(to: pixelRect) else {
-                finish(.failed)
-                return
-            }
-            finish(.captured(Capture(
-                image: cropped,
-                scale: panel.pixelScale,
-                anchorRect: ScreenshotSupport.cocoaRect(
-                    fromFlippedView: viewRect,
-                    screenFrame: panel.screenFrame))))
-        } else {
-            captureLive(displayID: panel.displayID,
-                        pixelRect: pixelRect,
-                        scale: panel.pixelScale,
-                        anchorRect: ScreenshotSupport.cocoaRect(
-                            fromFlippedView: viewRect,
-                            screenFrame: panel.screenFrame))
+            imageSize: panel.pixelSize)
+        captureLive(displayID: panel.displayID,
+                    pixelRect: pixelRect,
+                    scale: panel.pixelScale,
+                    anchorRect: ScreenshotSupport.cocoaRect(
+                        fromFlippedView: viewRect,
+                        screenFrame: panel.screenFrame))
+    }
+
+    private func finishFrozenCrop(at viewRect: CGRect, on panel: ScreenshotOverlayPanel) {
+        guard let frozen = panel.frozenImage else {
+            finish(.failed)
+            return
         }
+        let pixelRect = ScreenshotSupport.imagePixelRect(
+            fromView: viewRect,
+            viewSize: panel.screenFrame.size,
+            imageSize: CGSize(width: frozen.width, height: frozen.height))
+        guard let cropped = frozen.cropping(to: pixelRect) else {
+            finish(.failed)
+            return
+        }
+        let independent = ScreenshotSupport.independentImage(cropped) ?? cropped
+        finish(.captured(Capture(
+            image: independent,
+            scale: panel.pixelScale,
+            anchorRect: ScreenshotSupport.cocoaRect(
+                fromFlippedView: viewRect,
+                screenFrame: panel.screenFrame))))
     }
 
     fileprivate func confirmWindow(_ windowID: CGWindowID,
@@ -718,21 +739,25 @@ final class ScreenshotSelectionController {
             finish(.scrollingRegion(region(fromView: frame, on: panel, windowID: windowID)))
             return
         }
+        let wasFrozen = panel.frozenImage != nil
+        let scale = panel.pixelScale
+        let anchorRect = ScreenshotSupport.cocoaRect(
+            fromFlippedView: frame,
+            screenFrame: panel.screenFrame)
+        if wasFrozen { retirePanels() }
         Task { @MainActor [weak self] in
             guard let self else { return }
             // A composite with an attached dialog may be captured at another
             // display's scale than this panel's; record the one it has.
             guard let capture = await ScreenshotCaptureEngine.captureWindow(
-                windowID, scale: panel.pixelScale) else {
+                windowID, scale: scale, preferComposited: wasFrozen) else {
                 self.finish(.failed)
                 return
             }
             self.finish(.captured(Capture(
                 image: capture.image,
                 scale: capture.scale,
-                anchorRect: ScreenshotSupport.cocoaRect(
-                    fromFlippedView: frame,
-                    screenFrame: panel.screenFrame))))
+                anchorRect: anchorRect)))
         }
     }
 
@@ -748,6 +773,7 @@ final class ScreenshotSelectionController {
     }
 
     private func captureFullDisplay(on panel: ScreenshotOverlayPanel) {
+        guard acceptsCaptureInput else { return }
         markCapturePending()
         if activeMode == .geometry {
             let whole = CGRect(origin: .zero, size: panel.screenFrame.size)
@@ -777,6 +803,10 @@ final class ScreenshotSelectionController {
     fileprivate func confirmColor(at viewPoint: CGPoint, on panel: ScreenshotOverlayPanel) {
         guard acceptsCaptureInput, activeMode == .color,
               let image = panel.frozenImage ?? panel.overlayView.loupeImage else { return }
+        guard image.width > 0, image.height > 0 else {
+            finish(.failed)
+            return
+        }
         let point = ScreenshotSupport.imagePixelPoint(
             fromView: viewPoint,
             viewSize: panel.screenFrame.size,
@@ -820,7 +850,7 @@ final class ScreenshotSelectionController {
                     self.finish(.failed)
                     return
                 }
-                image = cropped
+                image = ScreenshotSupport.independentImage(cropped) ?? cropped
             }
             self.finish(.captured(Capture(image: image,
                                           scale: scale,
@@ -846,6 +876,18 @@ final class ScreenshotSelectionController {
         }
     }
 
+    /// A gesture can still have events on the way, so the surfaces are made
+    /// inert before they leave the screen: whatever arrives after this
+    /// point finds nothing left to act on. Does not finish the session so
+    /// asynchronous captures running after frozen panels leave can still
+    /// deliver or fail cleanly.
+    private func retirePanels() {
+        markCapturePending()
+        panels.forEach { $0.orderOut(nil) }
+        panels.removeAll()
+        NSCursor.arrow.set()
+    }
+
     private func finish(_ outcome: Outcome) {
         guard !finished else { return }
         finished = true
@@ -864,13 +906,7 @@ final class ScreenshotSelectionController {
             NSEvent.removeMonitor(globalKeyMonitor)
             self.globalKeyMonitor = nil
         }
-        // A gesture can still have events on the way, so the surfaces are made
-        // inert before they leave the screen: whatever arrives after this
-        // point finds nothing left to act on.
-        markCapturePending()
-        panels.forEach { $0.orderOut(nil) }
-        panels.removeAll()
-        NSCursor.arrow.set()
+        retirePanels()
         let completion = completion
         self.completion = nil
         completion?(outcome)
@@ -893,10 +929,6 @@ private final class ScreenshotOverlayPanel: OverlayPanel {
     private var backdropView: NSImageView!
 
     var overlayView: ScreenshotOverlayView { overlayViewStorage }
-
-    var frozenImageSize: CGSize? {
-        frozenImage.map { CGSize(width: $0.width, height: $0.height) }
-    }
 
     /// Display size in pixels, for live-mode crop math.
     var pixelSize: CGSize {
@@ -1026,6 +1058,7 @@ private final class ScreenshotOverlayView: NSView {
         self.frozenImage = frozenImage
         self.loupeImage = frozenImage
         self.windows = windows
+        refreshCaptureGuide()
         refreshPointerState()
     }
 
@@ -1057,6 +1090,7 @@ private final class ScreenshotOverlayView: NSView {
         let host = PassThroughHostingView(rootView: CaptureGuideView(
             strings: strings,
             purpose: purpose,
+            isFrozen: frozenImage != nil,
             offersScrollingCapture: controller.offersScrollingCapture,
             offersRepeatLastRegion: controller.offersRepeatLastRegion,
             requiresDraggedRegion: controller.requiresDraggedRegion,
@@ -1167,6 +1201,7 @@ private final class ScreenshotOverlayView: NSView {
         guideHost.rootView = CaptureGuideView(
             strings: strings,
             purpose: purpose,
+            isFrozen: frozenImage != nil,
             offersScrollingCapture: controller?.offersScrollingCapture ?? false,
             offersRepeatLastRegion: controller?.offersRepeatLastRegion ?? false,
             requiresDraggedRegion: controller?.requiresDraggedRegion ?? false,
@@ -1618,6 +1653,7 @@ private final class ScreenshotOverlayView: NSView {
 
     private func loupePixelColor(in image: CGImage,
                                  at pixelPoint: CGPoint) -> (color: NSColor?, point: CGPoint) {
+        guard image.width > 0, image.height > 0 else { return (nil, .zero) }
         let x = min(max(Int(pixelPoint.x.rounded(.down)), 0), image.width - 1)
         let y = min(max(Int(pixelPoint.y.rounded(.down)), 0), image.height - 1)
         let point = CGPoint(x: x, y: y)
@@ -1825,6 +1861,7 @@ private struct CaptureChromeBackdrop<S: Shape>: View {
 private struct CaptureGuideView: View {
     let strings: ScreenshotFeatureStrings
     let purpose: String?
+    let isFrozen: Bool
     let offersScrollingCapture: Bool
     let offersRepeatLastRegion: Bool
     let requiresDraggedRegion: Bool
@@ -1836,6 +1873,7 @@ private struct CaptureGuideView: View {
         if let screenCaptureOptions {
             UnifiedCaptureGuideContent(strings: strings,
                                        options: screenCaptureOptions,
+                                       isFrozen: isFrozen,
                                        offersScrollingCapture: offersScrollingCapture,
                                        offersRepeatLastRegion: offersRepeatLastRegion,
                                        scrollingCaptureEnabled: scrollingCaptureEnabled,
@@ -1862,7 +1900,8 @@ private struct CaptureGuideView: View {
                 Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
             }
             Spacer(minLength: 8)
             HStack(spacing: 7) {
@@ -1905,6 +1944,8 @@ private struct CaptureGuideView: View {
     private var subtitle: String {
         let base = requiresDraggedRegion || scrollingCaptureEnabled
             ? strings.scrollingCaptureSelectionHint
+            : isFrozen
+            ? strings.frozenSelectionHint
             : purpose?.isEmpty == false
             ? strings.hintDrag + "  ·  " + strings.hintClick
             : strings.hintClick
@@ -1921,6 +1962,7 @@ private struct UnifiedCaptureGuideContent: View {
     let strings: ScreenshotFeatureStrings
     @ObservedObject var options: ScreenCaptureSelectionOptions
     @ObservedObject private var l10n = L10n.shared
+    let isFrozen: Bool
     let offersScrollingCapture: Bool
     let offersRepeatLastRegion: Bool
     let scrollingCaptureEnabled: Bool
@@ -1953,8 +1995,8 @@ private struct UnifiedCaptureGuideContent: View {
             Text(subtitle)
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
             if options.availableTools.count > 1 {
                 CaptureKeyHint(key: "1/3", icon: "keyboard")
             }
@@ -1973,7 +2015,8 @@ private struct UnifiedCaptureGuideContent: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(height: 30)
+        .padding(.vertical, 4)
+        .frame(minHeight: 30)
         .background(CaptureChromeBackdrop(material: .ultraThinMaterial,
                                           shape: Capsule(style: .continuous)))
         .overlay {
@@ -2072,7 +2115,9 @@ private struct UnifiedCaptureGuideContent: View {
     private var subtitle: String {
         switch options.selectedTool {
         case .screenshot:
-            let base = strings.hintDrag + "  ·  " + strings.hintClick
+            let base = isFrozen
+                ? strings.frozenSelectionHint
+                : strings.hintDrag + "  ·  " + strings.hintClick
             guard offersScrollingCapture else { return base }
             return base + "  ·  "
                 + (scrollingCaptureEnabled

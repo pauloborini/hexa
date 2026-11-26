@@ -845,4 +845,70 @@ final class UninstallTests: XCTestCase {
             .failure(.unidentifiedOrProtected)
         )
     }
+
+    // MARK: Multiselection Homebrew regressions
+
+    private func cask(_ name: String) -> HomebrewPackage {
+        HomebrewPackage(kind: .cask, name: name, displayName: name)
+    }
+
+    func testHomebrewPackagesAreUniqueForAMultiAppCask() {
+        let package = cask("suite")
+        let targets = [AppUninstaller.HomebrewTargetPackage(targetPath: "/Applications/One.app", package: package),
+                       AppUninstaller.HomebrewTargetPackage(targetPath: "/Applications/Two.app", package: package)]
+
+        let packages = AppUninstaller.uniqueHomebrewPackages(
+            targetPackages: targets,
+            selectedTargetKeys: ["/Applications/One.app", "/Applications/Two.app"])
+
+        XCTAssertEqual(packages.map(\.id), [package.id])
+    }
+
+    func testHomebrewConfirmationKeepsEveryTargetOfTheSameCask() {
+        let package = cask("suite")
+        let targets = [AppUninstaller.HomebrewTargetPackage(targetPath: "/Applications/One.app", package: package),
+                       AppUninstaller.HomebrewTargetPackage(targetPath: "/Applications/Two.app", package: package)]
+
+        let both = AppUninstaller.homebrewConfirmationTargetPaths(
+            targetPackages: targets,
+            packages: [package],
+            selectedTargetKeys: ["/Applications/One.app", "/Applications/Two.app"])
+        let partial = AppUninstaller.homebrewConfirmationTargetPaths(
+            targetPackages: targets,
+            packages: [package],
+            selectedTargetKeys: ["/Applications/One.app"])
+
+        XCTAssertEqual(both?[package.id], ["/Applications/One.app", "/Applications/Two.app"])
+        XCTAssertNil(partial)
+    }
+
+    func testHomebrewValidationTargetPathsIgnoreAnUnselectedCask() {
+        let selected = cask("selected")
+        let unselected = cask("unselected")
+        let targets = [AppUninstaller.HomebrewTargetPackage(targetPath: "/Applications/Selected.app", package: selected),
+                       AppUninstaller.HomebrewTargetPackage(targetPath: "/Applications/Unselected.app", package: unselected)]
+
+        let paths = AppUninstaller.homebrewTargetPathsByPackage(
+            targetPackages: targets,
+            packageIDs: [selected.id])
+
+        XCTAssertEqual(paths, [selected.id: ["/Applications/Selected.app"]])
+    }
+
+    func testInterruptedHomebrewReconcilesOnlyConfirmedAbsencesOnce() {
+        let reconciled = AppUninstaller.interruptedHomebrewTargetPathsToReconcile(
+            targetPaths: ["/gone", "/present", "/already"],
+            alreadyRemoved: ["/already"],
+            isAbsent: { $0 == "/gone" || $0 == "/already" })
+
+        XCTAssertEqual(reconciled, ["/gone"])
+    }
+
+    func testDropSelectionKeepsAnExtensionlessAliasForEvaluation() {
+        let urls = [URL(fileURLWithPath: "/Applications/Alias"),
+                    URL(fileURLWithPath: "/Applications/Other.app")]
+
+        XCTAssertEqual(UninstallerSupport.droppedSelectionURLs(urls), urls)
+    }
+
 }

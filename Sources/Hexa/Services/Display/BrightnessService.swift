@@ -146,11 +146,13 @@ final class BrightnessService: ObservableObject {
     private struct Route {
         var method: BrightnessDisplay.Method
         var service: CFTypeRef?
+        var chipAddress: UInt32 = BrightnessSupport.chipAddress
         var maximum: UInt16
         var ddcReadable = false
         var ddcPathKey: String?
         var extendedDimming = false
         var lastDDCValue: UInt16?
+        var deferredHardwarePromotion = false
     }
 
     private var deferredRestoration = BrightnessSupport.DeferredDisplayRestoration()
@@ -160,6 +162,10 @@ final class BrightnessService: ObservableObject {
     private var rebuildDebounce: DispatchWorkItem?
     private var wakeObservers: [NSObjectProtocol] = []
     private var wakeRebuild: DispatchWorkItem?
+    /// Single bounded retry when an online external display's DCP AV service
+    /// has not finished appearing in the IORegistry yet.
+    private var ddcRetry: DispatchWorkItem?
+    private var serviceDiscoveryRetries = BrightnessSupport.ServiceDiscoveryRetries()
     /// How long displays are given to finish coming back before they are
     /// spoken to again. A monitor still bringing its connection up answers
     /// nothing, and taking that silence at face value would move it off the
@@ -217,10 +223,10 @@ final class BrightnessService: ObservableObject {
     /// DisplayServices is still applying the previous asynchronous write.
     private var systemWritesInFlight = Set<CGDirectDisplayID>()
     /// Steps that arrived while the monitor behind a display was being read,
-    /// waiting to be added to the step that read commits. An entry existing at
-    /// all means a read is in flight for that display. Main thread only, like
-    /// the key presses that fill it.
-    private var ddcPendingSteps: [CGDirectDisplayID: Double] = [:]
+    /// waiting to be added to the step that read commits. The UUID identifies
+    /// the active read request so an invalidated read never commits a stale step.
+    /// Main thread only, like the key presses that fill it.
+    private var ddcPendingSteps: [CGDirectDisplayID: (request: UUID, delta: Double)] = [:]
     private var drainScheduled = false
     /// Session memory for write-only monitors, so their slider does not jump
     /// back to a placeholder between panel openings. Each value remembers
@@ -609,6 +615,9 @@ final class BrightnessService: ObservableObject {
         rebuildDebounce?.cancel()
         rebuildDebounce = nil
         stateLock.lock()
+        ddcRetry?.cancel()
+        ddcRetry = nil
+        serviceDiscoveryRetries.reset()
         rebuildGeneration += 1
         rebuildingTopology = nil
         routes = [:]
@@ -664,6 +673,8 @@ final class BrightnessService: ObservableObject {
             stateLock.unlock()
             return
         }
+        ddcRetry?.cancel()
+        ddcRetry = nil
         rebuildGeneration += 1
         let generation = rebuildGeneration
         rebuildingTopology = topology
@@ -1555,17 +1566,22 @@ final class BrightnessService: ObservableObject {
                       method: BrightnessDisplay.Method,
                       delta: Double,
                       showOSD: Bool) {
-        let cached = displays.first(where: { $0.id == displayID })?.brightness
-        if method == .system {
-            guard let current = currentSystemBrightness(for: displayID, fallback: cached) else { return }
-            commitStep(from: current, delta: delta, to: displayID, method: method, showOSD: showOSD)
-            return
-        }
+        let display = displays.first(where: { $0.id == displayID })
         stateLock.lock()
         let known = levelKnownAt[displayID]
         let route = routes[displayID]
         let onlinePathKeys = routes.values.map(\.ddcPathKey)
         stateLock.unlock()
+        guard route?.method == method, display?.method == method else { return }
+        guard !(route?.method == .ddc && route?.ddcPathKey.map { forcedSoftwarePaths().contains($0) } == true) else {
+            return
+        }
+        let cached = display?.brightness
+        if method == .system {
+            guard let current = currentSystemBrightness(for: displayID, fallback: cached) else { return }
+            commitStep(from: current, delta: delta, to: displayID, method: method, showOSD: showOSD)
+            return
+        }
         let fresh = BrightnessSupport.trustsRememberedLevel(lastKnownAt: known, now: Date(),
                                                             window: Self.levelTrustWindow)
         // Gamma dimming is this app's own doing, so the remembered value is
@@ -1581,54 +1597,78 @@ final class BrightnessService: ObservableObject {
         // that read is about to commit. Starting a second read instead would
         // begin from the same value the first press has not written yet, and
         // two taps would move the monitor a single step.
-        if ddcPendingSteps[displayID] != nil {
-            ddcPendingSteps[displayID, default: 0] += delta
+        if var pending = ddcPendingSteps[displayID] {
+            pending.delta += delta
+            ddcPendingSteps[displayID] = pending
             return
         }
-        ddcPendingSteps[displayID] = 0
+        let request = UUID()
+        ddcPendingSteps[displayID] = (request: request, delta: 0)
         // Reading a monitor takes long enough to be felt, so it happens off
         // the main thread and the step follows the answer.
         workQueue.async { [weak self] in
             guard let self else { return }
-            let probe = self.ddcProbeLuminance(for: displayID, service: service)
-            if case let .replied(value, _) = probe {
-                // Writes share this queue with the read. Remember the hardware
-                // answer before the step is queued, so an external adjustment
-                // cannot make a necessary write look like a duplicate.
+            self.stateLock.lock()
+            let stillMatching = self.routes[displayID]?.method == route.method
+                && self.routes[displayID]?.ddcPathKey == route.ddcPathKey
+            self.stateLock.unlock()
+            let forcedBeforeProbe = route.ddcPathKey.map { self.forcedSoftwarePaths().contains($0) } ?? false
+            let probe: DDCProbe?
+            if stillMatching, !forcedBeforeProbe {
+                let measured = self.ddcProbeLuminance(for: displayID, service: service,
+                                                      chip: route.chipAddress)
+                probe = measured
                 self.stateLock.lock()
-                if self.routes[displayID]?.ddcPathKey == route.ddcPathKey,
-                   self.routes[displayID]?.extendedDimming == route.extendedDimming {
-                    self.routes[displayID]?.lastDDCValue = value
-                }
-                self.stateLock.unlock()
-                self.forgetWriteOnlyDDCPath(route.ddcPathKey)
-            } else {
-                if case .writeOnly = probe {
-                    // Same rule as the rebuild's verdict store: a fallback key
-                    // two identical monitors share carries no verdict, or the
-                    // twin staying online inherits this one's bad moment.
-                    let unambiguous = BrightnessSupport.unambiguousPathKeys(onlinePathKeys)
-                    if let key = route.ddcPathKey, unambiguous.contains(key) {
-                        self.rememberWriteOnlyDDCPath(key)
+                let routeValid = self.routes[displayID]?.method == route.method
+                    && self.routes[displayID]?.ddcPathKey == route.ddcPathKey
+                if case let .replied(value, _) = measured {
+                    // Writes share this queue with the read. Remember the hardware
+                    // answer before the step is queued, so an external adjustment
+                    // cannot make a necessary write look like a duplicate.
+                    if routeValid,
+                       self.routes[displayID]?.extendedDimming == route.extendedDimming {
+                        self.routes[displayID]?.lastDDCValue = value
+                    }
+                    self.stateLock.unlock()
+                    if routeValid, !(route.ddcPathKey.map { self.forcedSoftwarePaths().contains($0) } ?? false) {
+                        self.forgetWriteOnlyDDCPath(route.ddcPathKey)
+                    }
+                } else {
+                    if routeValid {
+                        self.routes[displayID]?.ddcReadable = false
+                        self.routes[displayID]?.lastDDCValue = nil
+                    }
+                    self.stateLock.unlock()
+                    if routeValid, !(route.ddcPathKey.map { self.forcedSoftwarePaths().contains($0) } ?? false) {
+                        if case .writeOnly = measured {
+                            // Same rule as the rebuild's verdict store: a fallback key
+                            // two identical monitors share carries no verdict, or the
+                            // twin staying online inherits this one's bad moment.
+                            let unambiguous = BrightnessSupport.unambiguousPathKeys(onlinePathKeys)
+                            if let key = route.ddcPathKey, unambiguous.contains(key) {
+                                self.rememberWriteOnlyDDCPath(key)
+                            }
+                        }
+                        Self.log.log("ddc reads stopped answering for display \(displayID); future steps will write only")
                     }
                 }
-                self.stateLock.lock()
-                if self.routes[displayID]?.ddcPathKey == route.ddcPathKey {
-                    self.routes[displayID]?.ddcReadable = false
-                    self.routes[displayID]?.lastDDCValue = nil
-                }
-                self.stateLock.unlock()
-                Self.log.log("ddc reads stopped answering for display \(displayID); future steps will write only")
+            } else {
+                probe = nil
             }
             DispatchQueue.main.async {
-                let queued = self.ddcPendingSteps.removeValue(forKey: displayID) ?? 0
+                guard self.ddcPendingSteps[displayID]?.request == request else { return }
+                let queued = self.ddcPendingSteps.removeValue(forKey: displayID)?.delta ?? 0
+                guard let probe else { return }
                 var current = cached
                 self.stateLock.lock()
                 let superseded = self.levelKnownAt[displayID] != known
-                let routeChanged = self.routes[displayID]?.ddcPathKey != route.ddcPathKey
-                    || self.routes[displayID]?.extendedDimming != route.extendedDimming
+                let currentRoute = self.routes[displayID]
+                let routeChanged = currentRoute?.method != route.method
+                    || currentRoute?.ddcPathKey != route.ddcPathKey
+                    || currentRoute?.extendedDimming != route.extendedDimming
                 self.stateLock.unlock()
                 guard !routeChanged else { return }
+                if let pathKey = route.ddcPathKey, self.forcedSoftwarePaths().contains(pathKey) { return }
                 if superseded {
                     // A level set while the monitor was being read is newer than the read.
                     current = self.displays.first(where: { $0.id == displayID })?.brightness ?? cached
@@ -1933,8 +1973,15 @@ final class BrightnessService: ObservableObject {
     private func displaysWokeUp() {
         guard running || !deferredRestoration.ids.isEmpty else { return }
         wakeRebuild?.cancel()
+        stateLock.lock()
+        ddcRetry?.cancel()
+        ddcRetry = nil
+        serviceDiscoveryRetries.reset()
+        stateLock.unlock()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.running || !self.deferredRestoration.ids.isEmpty else { return }
+            guard let self else { return }
+            self.wakeRebuild = nil
+            guard self.running || !self.deferredRestoration.ids.isEmpty else { return }
             self.restoreDeferredDisplays(retryFailures: true)
             guard self.running else { return }
             Self.log.log("woke from sleep; rebuilding display routes")
@@ -1942,6 +1989,28 @@ final class BrightnessService: ObservableObject {
         }
         wakeRebuild = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.wakeSettleDelay, execute: work)
+    }
+
+    private func scheduleDDCRetry(after delay: TimeInterval, generation: Int) {
+        guard running, wakeRebuild == nil, delay.isFinite else { return }
+        let clamped = max(0, delay)
+        stateLock.lock()
+        guard generation == rebuildGeneration else {
+            stateLock.unlock()
+            return
+        }
+        ddcRetry?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.running else { return }
+            self.stateLock.lock()
+            self.ddcRetry = nil
+            self.stateLock.unlock()
+            Self.log.log("retrying ddc service discovery")
+            self.refresh(force: true)
+        }
+        ddcRetry = work
+        stateLock.unlock()
+        DispatchQueue.main.asyncAfter(deadline: .now() + clamped, execute: work)
     }
 
     // MARK: - Rebuild (work queue)
@@ -1960,7 +2029,10 @@ final class BrightnessService: ObservableObject {
         let activeTopology = Self.activeDisplayIDs()
         var built: [BrightnessDisplay] = []
         var newRoutes: [CGDirectDisplayID: Route] = [:]
-        var ddcCandidates: [(index: Int, identity: BrightnessSupport.DisplayIdentity)] = []
+        var externalDisplays: [(id: CGDirectDisplayID,
+                                builtIndex: Int?,
+                                isDDCCandidate: Bool,
+                                identity: BrightnessSupport.DisplayIdentity)] = []
         var virtualIDs = Set<CGDirectDisplayID>()
 
         for id in onlineIDs {
@@ -1968,16 +2040,22 @@ final class BrightnessService: ObservableObject {
             // Read before the mirroring guard below, so the snapshot the panel
             // decides from covers every online display, exactly like the live
             // reading it replaces.
-            if (info?["kCGDisplayIsVirtualDevice"] as? Bool ?? false) { virtualIDs.insert(id) }
+            let isVirtual = info?["kCGDisplayIsVirtualDevice"] as? Bool ?? false
+            if isVirtual { virtualIDs.insert(id) }
+            let isAirPlay = info?["kCGDisplayIsAirPlay"] as? Bool ?? false
+            let isBuiltIn = CGDisplayIsBuiltin(id) != 0
             // A mirroring display follows its source; the source's slider is
-            // the real control.
-            guard CGDisplayMirrorsDisplay(id) == 0 else { continue }
-            if let info,
-               (info["kCGDisplayIsVirtualDevice"] as? Bool ?? false)
-                || (info["kCGDisplayIsAirPlay"] as? Bool ?? false) {
+            // the real control, yet an external mirror still owns a DCP proxy.
+            if CGDisplayMirrorsDisplay(id) != 0 {
+                if !isBuiltIn, !isVirtual, !isAirPlay {
+                    externalDisplays.append((id: id, builtIndex: nil, isDDCCandidate: false,
+                                             identity: Self.displayIdentity(id, info: info)))
+                }
                 continue
             }
-            let isBuiltIn = CGDisplayIsBuiltin(id) != 0
+            if isVirtual || isAirPlay {
+                continue
+            }
             let name = Self.displayName(id, info: info, screenNames: screenNames)
             let isActive = activeTopology.contains(id)
 
@@ -1985,9 +2063,14 @@ final class BrightnessService: ObservableObject {
                 stateLock.lock()
                 let level = rememberedLevel(for: id) ?? 1.0
                 stateLock.unlock()
+                let builtIndex = built.count
                 built.append(BrightnessDisplay(id: id, name: name, isBuiltIn: isBuiltIn,
                                                method: nil, isActive: false,
                                                brightness: level, readable: false))
+                if !isBuiltIn {
+                    externalDisplays.append((id: id, builtIndex: builtIndex, isDDCCandidate: false,
+                                             identity: Self.displayIdentity(id, info: info)))
+                }
                 continue
             }
 
@@ -2009,11 +2092,16 @@ final class BrightnessService: ObservableObject {
                 let remembered = rememberedLevel(for: id)
                 stateLock.unlock()
                 let trusted = asleep ? (remembered ?? Double(level)) : Double(level)
+                let builtIndex = built.count
                 built.append(BrightnessDisplay(id: id, name: name, isBuiltIn: isBuiltIn,
                                                method: .system, isActive: true,
                                                brightness: trusted, readable: !asleep,
                                                routeKind: .system))
                 newRoutes[id] = Route(method: .system, service: nil, maximum: 100)
+                if !isBuiltIn {
+                    externalDisplays.append((id: id, builtIndex: builtIndex, isDDCCandidate: false,
+                                             identity: Self.displayIdentity(id, info: info)))
+                }
                 if !asleep {
                     stateLock.lock()
                     levelKnownAt[id] = Date()
@@ -2022,11 +2110,19 @@ final class BrightnessService: ObservableObject {
                 continue
             }
             guard !isBuiltIn else { continue }
-            ddcCandidates.append((built.count, Self.displayIdentity(id, info: info)))
+            let builtIndex = built.count
+            externalDisplays.append((id: id, builtIndex: builtIndex, isDDCCandidate: true,
+                                     identity: Self.displayIdentity(id, info: info)))
             // Placeholder; the DDC pass below fills brightness and route.
             built.append(BrightnessDisplay(id: id, name: name, isBuiltIn: false,
                                            method: .ddc, isActive: true,
                                            brightness: 0.5, readable: false))
+        }
+
+        let ddcCandidates = externalDisplays.enumerated().compactMap { offset, item
+            -> (externalIndex: Int, builtIndex: Int, identity: BrightnessSupport.DisplayIdentity)? in
+            guard item.isDDCCandidate, let builtIndex = item.builtIndex else { return nil }
+            return (offset, builtIndex, item.identity)
         }
 
         let drawableIDs = BrightnessSupport.drawableDisplayIDs(
@@ -2078,37 +2174,45 @@ final class BrightnessService: ObservableObject {
             }
         }
 
-        // DDC pass: walk the IORegistry once, score services against the
-        // remaining displays and read each matched monitor's brightness.
+        // DDC pass: walk the IORegistry once, score services against every
+        // online external display (so system and inactive external displays
+        // reserve their proxies), and read each matched DDC monitor.
         // Whatever ends up without a live DDC channel falls back to gamma
         // dimming, so every real display keeps a working slider.
-        var softwareIndices = Set(ddcCandidates.map(\.index))
+        var softwareIndices = Set(ddcCandidates.map(\.builtIndex))
         var forcedSoftwareIDs = Set<CGDirectDisplayID>()
         var autoDegradedIDs = Set<CGDirectDisplayID>()
         var ambiguousDDCIDs = Set<CGDirectDisplayID>()
         var extendedDimmingIDs = Set<CGDirectDisplayID>()
+        var deferredHardwarePromotionIDs = Set<CGDirectDisplayID>()
         var softwarePathKeys: [CGDirectDisplayID: String] = [:]
+        var unserved = Set<CGDirectDisplayID>()
         if !ddcCandidates.isEmpty, BrightnessBridge.ddcAvailable {
             let services = Self.externalServices()
             var pairs: [BrightnessSupport.DisplayServicePair] = []
-            for candidate in ddcCandidates {
+            for (externalIndex, display) in externalDisplays.enumerated() {
                 for service in services {
                     pairs.append(BrightnessSupport.DisplayServicePair(
-                        displayIndex: candidate.index,
+                        displayIndex: externalIndex,
                         serviceOrdinal: service.identity.ordinal,
                         score: BrightnessSupport.matchScore(service: service.identity,
-                                                            display: candidate.identity),
+                                                            display: display.identity),
                         sameLocation: BrightnessSupport.sharesLocation(
-                            service: service.identity, display: candidate.identity)))
+                            service: service.identity, display: display.identity)))
                 }
             }
             let match = BrightnessSupport.assignServices(pairs: pairs)
             for candidate in ddcCandidates {
-                let id = built[candidate.index].id
-                if let settled = match.matches[candidate.index] {
+                let id = built[candidate.builtIndex].id
+                if let settled = match.matches[candidate.externalIndex] {
                     Self.log.log("ddc display \(id) matched service \(settled.serviceOrdinal) by \(String(describing: settled.basis), privacy: .public)")
-                } else if match.ambiguousDisplayIndices.contains(candidate.index) {
+                } else if match.ambiguousDisplayIndices.contains(candidate.externalIndex) {
                     ambiguousDDCIDs.insert(id)
+                    if services.count < externalDisplays.count {
+                        unserved.insert(id)
+                    }
+                } else {
+                    unserved.insert(id)
                 }
             }
             if !ambiguousDDCIDs.isEmpty {
@@ -2119,14 +2223,14 @@ final class BrightnessService: ObservableObject {
             // not carry one monitor's choices onto both, so every per-key
             // decision below is limited to keys exactly one display owns.
             let pathKeys = ddcCandidates.reduce(into: [Int: String]()) { keys, candidate in
-                guard let ordinal = match.matches[candidate.index]?.serviceOrdinal,
+                guard let ordinal = match.matches[candidate.externalIndex]?.serviceOrdinal,
                       let matched = services.first(where: { $0.identity.ordinal == ordinal })
                 else { return }
-                let id = built[candidate.index].id
+                let id = built[candidate.builtIndex].id
                 let ioDisplayLocation = candidate.identity.ioDisplayLocation.flatMap {
                     $0.isEmpty ? nil : $0
                 } ?? matched.identity.ioDisplayLocation
-                keys[candidate.index] = BrightnessSupport.ddcPathKey(
+                keys[candidate.externalIndex] = BrightnessSupport.ddcPathKey(
                     displayFingerprint: Self.displayFingerprint(id),
                     ioDisplayLocation: ioDisplayLocation)
             }
@@ -2134,12 +2238,12 @@ final class BrightnessService: ObservableObject {
             let verdicts = writeOnlyDDCVerdicts()
             let nonApplyingVerdicts = nonApplyingDDCVerdicts()
             for candidate in ddcCandidates {
-                guard let ordinal = match.matches[candidate.index]?.serviceOrdinal,
+                guard let ordinal = match.matches[candidate.externalIndex]?.serviceOrdinal,
                       let matched = services.first(where: { $0.identity.ordinal == ordinal }) else {
                     continue
                 }
-                let id = built[candidate.index].id
-                let pathKey = pathKeys[candidate.index]
+                let id = built[candidate.builtIndex].id
+                let pathKey = pathKeys[candidate.externalIndex]
                 let keyIsUnambiguous = pathKey.map { unambiguousKeys.contains($0) } ?? false
                 if let pathKey, keyIsUnambiguous, forcedSoftwarePaths().contains(pathKey) {
                     // Chosen by hand: leave the display in `softwareIndices`
@@ -2177,8 +2281,31 @@ final class BrightnessService: ObservableObject {
                     Self.log.log("ddc cached display \(id): writeOnly")
                 } else {
                     probe = ddcProbeLuminance(for: id, service: matched.service,
+                                              chip: matched.chipAddress,
                                               classifyingChannel: true)
                     Self.log.log("ddc probe display \(id): \(String(describing: probe), privacy: .public)")
+                }
+                stateLock.lock()
+                let previouslySoftware = routes[id]?.method == .software
+                let pendingValue = pendingLevels[id]?.value
+                stateLock.unlock()
+                if probe != .dead,
+                   BrightnessSupport.keepsSoftwareDimOnDiscovery(
+                       previouslySoftware: previouslySoftware,
+                       dimmed: dimmedDisplays.contains(id),
+                       pending: pendingValue) {
+                    if case .replied = probe {
+                        forgetWriteOnlyDDCPath(pathKey)
+                        forgetNonApplyingDDCPath(pathKey)
+                    } else if case .writeOnly = probe, !rememberedWriteOnly {
+                        rememberWriteOnlyDDCPath(keyIsUnambiguous ? pathKey : nil)
+                    }
+                    if keyIsUnambiguous, let pathKey {
+                        softwarePathKeys[id] = pathKey
+                    }
+                    deferredHardwarePromotionIDs.insert(id)
+                    Self.log.log("ddc display \(id): keeping active software dimming during discovery")
+                    continue
                 }
                 switch probe {
                 case .replied(let current, let maximum):
@@ -2210,19 +2337,20 @@ final class BrightnessService: ObservableObject {
                             _ = applySoftwareDim(id, value: picture)
                         }
                     }
-                    built[candidate.index] = BrightnessDisplay(
-                        id: id, name: built[candidate.index].name, isBuiltIn: false,
+                    built[candidate.builtIndex] = BrightnessDisplay(
+                        id: id, name: built[candidate.builtIndex].name, isBuiltIn: false,
                         method: .ddc, isActive: true, brightness: level,
                         readable: true, canChooseDimming: keyIsUnambiguous,
                         routeKind: .ddcReadable)
                     newRoutes[id] = Route(method: .ddc, service: matched.service,
+                                          chipAddress: matched.chipAddress,
                                           maximum: ceiling, ddcReadable: true,
                                           ddcPathKey: pathKey, extendedDimming: extendsDimming,
                                           lastDDCValue: current)
                     stateLock.lock()
                     levelKnownAt[id] = Date()
                     stateLock.unlock()
-                    softwareIndices.remove(candidate.index)
+                    softwareIndices.remove(candidate.builtIndex)
                 case .writeOnly:
                     if let pathKey, keyIsUnambiguous, extendedDimmingPaths().contains(pathKey) {
                         extendedDimmingIDs.insert(id)
@@ -2244,14 +2372,15 @@ final class BrightnessService: ObservableObject {
                         ? BrightnessSupport.extendedDimmingComponents(for: remembered).hardware
                         : remembered
                     stateLock.unlock()
-                    built[candidate.index] = BrightnessDisplay(
-                        id: id, name: built[candidate.index].name, isBuiltIn: false,
+                    built[candidate.builtIndex] = BrightnessDisplay(
+                        id: id, name: built[candidate.builtIndex].name, isBuiltIn: false,
                         method: .ddc, isActive: true, brightness: seed,
                         readable: false, canChooseDimming: keyIsUnambiguous,
                         routeKind: .ddcWriteOnly, writeOnlyVerdictCached: rememberedWriteOnly)
                     newRoutes[id] = Route(method: .ddc, service: matched.service,
+                                          chipAddress: matched.chipAddress,
                                           maximum: 100, ddcPathKey: pathKey)
-                    softwareIndices.remove(candidate.index)
+                    softwareIndices.remove(candidate.builtIndex)
                 case .dead:
                     forgetWriteOnlyDDCPath(pathKey)
                     // The channel rejects every write (typically an HDMI
@@ -2305,7 +2434,8 @@ final class BrightnessService: ObservableObject {
                 routeKind: autoDegradedIDs.contains(id) ? .softwareAuto
                     : ambiguousDDCIDs.contains(id) ? .softwareAmbiguous : .software)
             newRoutes[id] = Route(method: .software, service: nil, maximum: 100,
-                                  ddcPathKey: softwarePathKeys[id])
+                                  ddcPathKey: softwarePathKeys[id],
+                                  deferredHardwarePromotion: deferredHardwarePromotionIDs.contains(id))
             if value < 0.999 || dimmedDisplays.contains(id) {
                 _ = applySoftwareDim(id, value: value)
             }
@@ -2318,6 +2448,7 @@ final class BrightnessService: ObservableObject {
         }
         var resolved: [BrightnessDisplay] = []
         var supportsBrightnessOSD = false
+        var retryDelay: TimeInterval?
         let stale: Bool
         stateLock.lock()
         stale = generation != rebuildGeneration
@@ -2354,6 +2485,14 @@ final class BrightnessService: ObservableObject {
             recordDiscoveredTopology(online: seenTopology, active: activeTopology,
                                      fingerprints: fingerprints)
             rebuildingTopology = nil
+            serviceDiscoveryRetries.retain(seenTopology)
+            for id in seenTopology where !unserved.contains(id) {
+                serviceDiscoveryRetries.found(id)
+            }
+            let now = Date()
+            retryDelay = unserved.compactMap { id in
+                serviceDiscoveryRetries.missing(id, now: now)
+            }.min()
             for display in resolved where display.method != nil {
                 lastApplied[display.id] = RememberedLevel(
                     value: display.brightness,
@@ -2362,6 +2501,9 @@ final class BrightnessService: ObservableObject {
         }
         stateLock.unlock()
         guard !stale else { return }
+        if !unserved.isEmpty {
+            Self.log.log("ddc displays \(unserved.sorted().map(String.init).joined(separator: ","), privacy: .public) have no service yet; retry delay \(retryDelay.map { String($0) } ?? "exhausted", privacy: .public)")
+        }
         for display in resolved where display.isActive {
             let route = display.method.map { String(describing: $0) } ?? "none"
             Self.log.log("display \(display.id) [\(Self.displayFingerprint(display.id), privacy: .public)] route \(route, privacy: .public) level \(display.brightness)")
@@ -2380,6 +2522,9 @@ final class BrightnessService: ObservableObject {
                 self.brightnessOSDSupported = supportsBrightnessOSD
             }
             if self.isRefreshing { self.isRefreshing = false }
+            if let retryDelay, retryDelay.isFinite {
+                self.scheduleDDCRetry(after: retryDelay, generation: generation)
+            }
             self.refreshKeyboardLight()
             self.syncKeyTap()
         }
@@ -2416,12 +2561,24 @@ final class BrightnessService: ObservableObject {
                 }
                 let deviceValue = BrightnessSupport.deviceValue(for: value,
                                                                 maximum: route.maximum)
-                let packet = BrightnessSupport.writePacket(
-                    code: BrightnessSupport.luminanceCode,
-                    value: deviceValue)
-                writeSucceeded = ddcSend(to: id, service: service, packet: packet)
+                writeSucceeded = writeDDCLuminance(deviceValue, to: id,
+                                                   route: route, service: service)
             case .software:
                 writeSucceeded = applySoftwareDim(id, value: value)
+                if writeSucceeded && BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+                    deferredHardwarePromotion: route.deferredHardwarePromotion,
+                    appliedValue: value,
+                    stillDimmed: dimmedDisplays.contains(id)
+                ) {
+                    stateLock.lock()
+                    if routes[id]?.method == .software {
+                        routes[id]?.deferredHardwarePromotion = false
+                    }
+                    stateLock.unlock()
+                    DispatchQueue.main.async { [weak self] in
+                        self?.refresh(force: true)
+                    }
+                }
             }
             Self.log.log("wrote display \(id) route \(String(describing: route.method), privacy: .public) level \(value) ok \(writeSucceeded)")
             if route.method == .ddc, writeSucceeded, route.ddcReadable,
@@ -2429,10 +2586,16 @@ final class BrightnessService: ObservableObject {
                 scheduleDDCConfirmation(for: id, route: route, sliderValue: value)
             }
             if route.method == .ddc, !writeSucceeded, route.ddcReadable == false,
-               let pathKey = route.ddcPathKey {
-                forgetWriteOnlyDDCPath(pathKey)
-                DispatchQueue.main.async { [weak self] in
-                    self?.refresh(force: true)
+               let pathKey = route.ddcPathKey,
+               !forcedSoftwarePaths().contains(pathKey) {
+                stateLock.lock()
+                let stillDDC = routes[id]?.method == .ddc && routes[id]?.ddcPathKey == pathKey
+                stateLock.unlock()
+                if stillDDC {
+                    forgetWriteOnlyDDCPath(pathKey)
+                    DispatchQueue.main.async { [weak self] in
+                        self?.refresh(force: true)
+                    }
                 }
             }
             if route.method == .system {
@@ -2491,9 +2654,10 @@ final class BrightnessService: ObservableObject {
         stateLock.unlock()
         guard let route, route.method == .ddc, route.ddcReadable,
               let service = route.service, route.ddcPathKey == pending.pathKey,
+              !(route.ddcPathKey.map { forcedSoftwarePaths().contains($0) } ?? false),
               CGDisplayIsAsleep(id) == 0 else { return }
         let confirmingRead: BrightnessSupport.ConfirmingRead
-        switch ddcProbeLuminance(for: id, service: service) {
+        switch ddcProbeLuminance(for: id, service: service, chip: route.chipAddress) {
         case .replied(let current, _): confirmingRead = .replied(current: current)
         case .writeOnly, .dead: confirmingRead = .failed
         }
@@ -2567,23 +2731,12 @@ final class BrightnessService: ObservableObject {
 
         let deviceValue = BrightnessSupport.deviceValue(for: components.hardware,
                                                         maximum: route.maximum)
-        var hardwareSucceeded = true
         if route.lastDDCValue != deviceValue {
-            let packet = BrightnessSupport.writePacket(code: BrightnessSupport.luminanceCode,
-                                                       value: deviceValue)
-            hardwareSucceeded = ddcSend(to: id, service: service, packet: packet)
-            if hardwareSucceeded {
-                stateLock.lock()
-                if routes[id]?.ddcPathKey == route.ddcPathKey,
-                   routes[id]?.extendedDimming == true {
-                    routes[id]?.lastDDCValue = deviceValue
-                }
-                stateLock.unlock()
+            guard writeDDCLuminance(deviceValue, to: id, route: route, service: service) else {
+                return false
             }
         }
-        let pictureSucceeded = components.picture >= 0.999
-            || applySoftwareDim(id, value: components.picture)
-        return hardwareSucceeded && pictureSucceeded
+        return components.picture >= 0.999 || applySoftwareDim(id, value: components.picture)
     }
 
     // MARK: - Software dimming (work queue)
@@ -2655,7 +2808,41 @@ final class BrightnessService: ObservableObject {
         ddcCommandEnds[id] = DispatchTime.now().uptimeNanoseconds / 1_000
     }
 
-    private func ddcSend(to id: CGDirectDisplayID, service: CFTypeRef, packet: [UInt8]) -> Bool {
+    private func writeDDCLuminance(_ value: UInt16,
+                                   to id: CGDirectDisplayID,
+                                   route: Route,
+                                   service: CFTypeRef) -> Bool {
+        let packet = BrightnessSupport.writePacket(
+            code: BrightnessSupport.luminanceCode,
+            value: value)
+        let ok = ddcSend(to: id, service: service, chip: route.chipAddress, packet: packet) {
+            self.stateLock.lock()
+            let stillDDC = self.routes[id]?.method == .ddc
+                && self.routes[id]?.ddcPathKey == route.ddcPathKey
+            self.stateLock.unlock()
+            guard stillDDC else { return false }
+            if let path = route.ddcPathKey, self.forcedSoftwarePaths().contains(path) {
+                return false
+            }
+            return true
+        }
+        if ok {
+            stateLock.lock()
+            if routes[id]?.method == .ddc,
+               routes[id]?.ddcPathKey == route.ddcPathKey {
+                routes[id]?.lastDDCValue = value
+            }
+            stateLock.unlock()
+        }
+        return ok
+    }
+
+    private func ddcSend(to id: CGDirectDisplayID,
+                         service: CFTypeRef,
+                         chip: UInt32 = BrightnessSupport.chipAddress,
+                         packet: [UInt8],
+                         whileCurrent: () -> Bool = { true }) -> Bool {
+        guard whileCurrent() else { return false }
         if let override = Self.ddcSendOverride { return override(id, packet) }
         guard let write = BrightnessBridge.writeI2C else { return false }
         paceDDCCommand(for: id)
@@ -2664,8 +2851,10 @@ final class BrightnessService: ObservableObject {
         var success = false
         for attempt in 0...BrightnessSupport.retryAttempts {
             for _ in 0..<BrightnessSupport.writeCycles {
+                guard whileCurrent() else { return false }
                 usleep(BrightnessSupport.writePauseMicroseconds)
-                let accepted = write(service, BrightnessSupport.chipAddress,
+                guard whileCurrent() else { return false }
+                let accepted = write(service, chip,
                                      BrightnessSupport.dataAddress,
                                      &bytes, UInt32(bytes.count)) == KERN_SUCCESS
                 success = accepted || success
@@ -2678,7 +2867,7 @@ final class BrightnessService: ObservableObject {
         return success
     }
 
-    private enum DDCProbe {
+    private enum DDCProbe: Equatable {
         case replied(current: UInt16, maximum: UInt16)
         case writeOnly
         case dead
@@ -2703,13 +2892,14 @@ final class BrightnessService: ObservableObject {
         let pathKey = routes[id]?.ddcPathKey
         if pathKey != nil {
             pendingLevels.removeValue(forKey: id)
-        }
-        if pathKey != nil && !preferred {
-            lastApplied[id] = nil
-            levelKnownAt[id] = nil
+            if !preferred {
+                lastApplied[id] = nil
+                levelKnownAt[id] = nil
+            }
         }
         stateLock.unlock()
         guard let pathKey else { return }
+        ddcPendingSteps.removeValue(forKey: id)
         let defaults = UserDefaults.standard
         let stored = defaults.stringArray(forKey: DefaultsKey.brightnessExtendedDimmingPaths) ?? []
         let updated = BrightnessSupport.updatedWriteOnlyDDCPaths(
@@ -2738,8 +2928,16 @@ final class BrightnessService: ObservableObject {
     func setSoftwareDimmingPreferred(_ preferred: Bool, for id: CGDirectDisplayID) {
         stateLock.lock()
         let pathKey = routes[id]?.ddcPathKey
+        if pathKey != nil {
+            pendingLevels.removeValue(forKey: id)
+            if !preferred {
+                lastApplied[id] = nil
+                levelKnownAt[id] = nil
+            }
+        }
         stateLock.unlock()
         guard let pathKey else { return }
+        ddcPendingSteps.removeValue(forKey: id)
         let defaults = UserDefaults.standard
         let stored = defaults.stringArray(forKey: DefaultsKey.brightnessForcedSoftwarePaths) ?? []
         let updated = BrightnessSupport.updatedWriteOnlyDDCPaths(
@@ -2760,10 +2958,6 @@ final class BrightnessService: ObservableObject {
         // first write to the panel then dims what is already dimmed. The
         // curve goes back before the rebuild, so the probe reads a display
         // showing its own picture.
-        stateLock.lock()
-        lastApplied[id] = nil
-        levelKnownAt[id] = nil
-        stateLock.unlock()
         workQueue.async { [weak self] in
             guard let self else { return }
             self.applySoftwareDim(id, value: 1)
@@ -2776,11 +2970,9 @@ final class BrightnessService: ObservableObject {
     /// untouched and unwritten: a path that exists only there has no age,
     /// reads as already expired, and is probed again on the first rebuild,
     /// which is what the field report needs.
-    private static let writeOnlyVerdictsKey = "brightnessDDCWriteOnlyVerdicts"
-
     private func writeOnlyDDCVerdicts() -> [String: Date] {
         BrightnessSupport.writeOnlyVerdictDates(
-            UserDefaults.standard.dictionary(forKey: Self.writeOnlyVerdictsKey))
+            UserDefaults.standard.dictionary(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts))
     }
 
     private func rememberWriteOnlyDDCPath(_ path: String?) {
@@ -2790,7 +2982,7 @@ final class BrightnessService: ObservableObject {
         let updated = BrightnessSupport.updatedWriteOnlyDDCVerdicts(
             stored, path: path, now: Date(), isWriteOnly: true)
         if updated != stored {
-            defaults.set(updated, forKey: Self.writeOnlyVerdictsKey)
+            defaults.set(updated, forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
         }
     }
 
@@ -2801,7 +2993,7 @@ final class BrightnessService: ObservableObject {
         let updated = BrightnessSupport.updatedWriteOnlyDDCVerdicts(
             stored, path: path, now: Date(), isWriteOnly: false)
         if updated != stored {
-            defaults.set(updated, forKey: Self.writeOnlyVerdictsKey)
+            defaults.set(updated, forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
         }
     }
 
@@ -2872,6 +3064,7 @@ final class BrightnessService: ObservableObject {
     /// write, while their reads "succeed" with cached EDID bytes).
     private func ddcProbeLuminance(for id: CGDirectDisplayID,
                                    service: CFTypeRef,
+                                   chip: UInt32 = BrightnessSupport.chipAddress,
                                    classifyingChannel: Bool = false) -> DDCProbe {
         guard let write = BrightnessBridge.writeI2C,
               let read = BrightnessBridge.readI2C else { return .dead }
@@ -2886,7 +3079,7 @@ final class BrightnessService: ObservableObject {
                 isFinalAttempt: attempt + 1 == attempts)
             for _ in 0..<writeCycles {
                 usleep(BrightnessSupport.writePauseMicroseconds)
-                if write(service, BrightnessSupport.chipAddress,
+                if write(service, chip,
                          BrightnessSupport.dataAddress,
                          &request, UInt32(request.count)) == KERN_SUCCESS {
                     writeAccepted = true
@@ -2894,7 +3087,7 @@ final class BrightnessService: ObservableObject {
             }
             usleep(BrightnessSupport.readPauseMicroseconds)
             var reply = [UInt8](repeating: 0, count: BrightnessSupport.replyLength)
-            if read(service, BrightnessSupport.chipAddress, 0,
+            if read(service, chip, 0,
                     &reply, UInt32(reply.count)) == KERN_SUCCESS,
                let parsed = BrightnessSupport.parseReply(reply) {
                 return .replied(current: parsed.current, maximum: parsed.maximum)
@@ -2949,6 +3142,7 @@ final class BrightnessService: ObservableObject {
     private struct ExternalService {
         var identity: BrightnessSupport.ServiceIdentity
         var service: CFTypeRef
+        var chipAddress: UInt32 = BrightnessSupport.chipAddress
     }
 
     /// External displays hang off the IORegistry as a framebuffer entry
@@ -2997,7 +3191,14 @@ final class BrightnessService: ObservableObject {
                       location == "External",
                       let service = createWithService(kCFAllocatorDefault, entry)?.takeRetainedValue()
                 else { continue }
-                results.append(ExternalService(identity: pending, service: service))
+                let epicProviderClass = Self.ancestorProperty(entry, "EPICProviderClass") as? String
+                let chipAddress = BrightnessSupport.ddcChipAddress(epicProviderClass: epicProviderClass)
+                if chipAddress != BrightnessSupport.chipAddress {
+                    Self.log.log("ddc service \(pending.ordinal) using chip address 0x\(String(chipAddress, radix: 16), privacy: .public) for \(epicProviderClass ?? "default", privacy: .public)")
+                }
+                results.append(ExternalService(identity: pending,
+                                               service: service,
+                                               chipAddress: chipAddress))
             }
         }
         return results
@@ -3007,6 +3208,16 @@ final class BrightnessService: ObservableObject {
         IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault,
                                         IOOptionBits(kIORegistryIterateRecursively))?
             .takeRetainedValue()
+    }
+
+    private static func ancestorProperty(_ entry: io_service_t, _ key: String) -> AnyObject? {
+        IORegistryEntrySearchCFProperty(
+            entry,
+            kIOServicePlane,
+            key as CFString,
+            kCFAllocatorDefault,
+            IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)
+        )
     }
 }
 

@@ -452,9 +452,13 @@ final class BrightnessSupportTests: XCTestCase {
 
     // MARK: DDC VCP reply parsing
 
-    private func makeDDCReply(code: UInt8, current: UInt16, maximum: UInt16) -> [UInt8] {
+    private func makeDDCReply(code: UInt8,
+                              current: UInt16,
+                              maximum: UInt16,
+                              opcode: UInt8 = BrightnessSupport.getVCPReplyOpcode,
+                              resultCode: UInt8 = 0x00) -> [UInt8] {
         var bytes: [UInt8] = [
-            0x6E, 0x88, 0x02, 0x00,
+            0x6E, 0x88, opcode, resultCode,
             code, 0x00,
             UInt8(maximum >> 8), UInt8(maximum & 0xFF),
             UInt8(current >> 8), UInt8(current & 0xFF),
@@ -478,5 +482,151 @@ final class BrightnessSupportTests: XCTestCase {
         var corruptedReply = luminanceReply
         corruptedReply[corruptedReply.count - 1] ^= 0xFF
         XCTAssertNil(BrightnessSupport.parseReply(corruptedReply))
+    }
+
+    func testParseReplyRejectsInvalidOpcodeAndNonZeroResultCode() {
+        let wrongOpcode = makeDDCReply(code: BrightnessSupport.luminanceCode,
+                                       current: 50,
+                                       maximum: 100,
+                                       opcode: 0x03)
+        XCTAssertNil(BrightnessSupport.parseReply(wrongOpcode))
+
+        let unsupportedVCP = makeDDCReply(code: BrightnessSupport.luminanceCode,
+                                          current: 0,
+                                          maximum: 0,
+                                          resultCode: 0x01)
+        XCTAssertNil(BrightnessSupport.parseReply(unsupportedVCP))
+    }
+
+    func testReadRequestPacketChecksumIncludesDataAddress() {
+        let packet = BrightnessSupport.readRequestPacket(code: BrightnessSupport.luminanceCode)
+        let expectedSeed = UInt8(BrightnessSupport.chipAddress << 1)
+            ^ UInt8(BrightnessSupport.dataAddress)
+        let body: [UInt8] = [0x82, 0x01, BrightnessSupport.luminanceCode]
+        let expectedChecksum = body.reduce(expectedSeed) { $0 ^ $1 }
+        XCTAssertEqual(packet, body + [expectedChecksum])
+        XCTAssertEqual(packet, [0x82, 0x01, 0x10, 0xAC])
+    }
+
+    // MARK: Built-in HDMI converter addressing
+
+    func testDDCChipAddressUsesConverterAddressOnlyForMCDP29XX() {
+        XCTAssertEqual(
+            BrightnessSupport.ddcChipAddress(epicProviderClass: BrightnessSupport.hdmiConverterProviderClass),
+            BrightnessSupport.hdmiConverterChipAddress)
+        XCTAssertEqual(BrightnessSupport.ddcChipAddress(epicProviderClass: "AppleDCPMCDP29XX"), 0xB7)
+        XCTAssertEqual(BrightnessSupport.ddcChipAddress(epicProviderClass: nil), 0x37)
+        XCTAssertEqual(BrightnessSupport.ddcChipAddress(epicProviderClass: "AppleDCP"), 0x37)
+    }
+
+    // MARK: Service discovery retries
+
+    func testServiceDiscoveryRetriesProgressionClampingExhaustionAndReset() {
+        var retries = BrightnessSupport.ServiceDiscoveryRetries()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        // Progression: 2s -> 5s -> 10s, then exhausted.
+        XCTAssertEqual(retries.missing(1, now: start), 2)
+
+        // Early check clamps to the active deadline without advancing the budget.
+        XCTAssertEqual(retries.missing(1, now: start.addingTimeInterval(0.5)) ?? -1, 1.5, accuracy: 0.001)
+        // Backward clock shift clamps remaining delay to the current step's delay.
+        XCTAssertEqual(retries.missing(1, now: start.addingTimeInterval(-30)), 2)
+        // Re-established deadline is now start - 30 + 2 = start - 28.
+        let afterClockJump = start.addingTimeInterval(-28)
+        XCTAssertEqual(retries.missing(1, now: afterClockJump), 5)
+        XCTAssertEqual(retries.missing(1, now: afterClockJump.addingTimeInterval(5)), 10)
+        XCTAssertNil(retries.missing(1, now: afterClockJump.addingTimeInterval(15)))
+        XCTAssertNil(retries.missing(1, now: afterClockJump.addingTimeInterval(30)))
+
+        // Finding the service clears the retry state for that display.
+        retries.found(1)
+        XCTAssertEqual(retries.missing(1, now: start.addingTimeInterval(100)), 2)
+    }
+
+    // MARK: Software dimming discovery preservation
+
+    func testKeepsSoftwareDimOnDiscovery() {
+        XCTAssertTrue(BrightnessSupport.keepsSoftwareDimOnDiscovery(
+            previouslySoftware: true, dimmed: true, pending: nil))
+        XCTAssertTrue(BrightnessSupport.keepsSoftwareDimOnDiscovery(
+            previouslySoftware: true, dimmed: true, pending: 0.4))
+        XCTAssertFalse(BrightnessSupport.keepsSoftwareDimOnDiscovery(
+            previouslySoftware: true, dimmed: true, pending: 1.0))
+        XCTAssertFalse(BrightnessSupport.keepsSoftwareDimOnDiscovery(
+            previouslySoftware: true, dimmed: false, pending: nil))
+        XCTAssertFalse(BrightnessSupport.keepsSoftwareDimOnDiscovery(
+            previouslySoftware: false, dimmed: true, pending: nil))
+    }
+
+    func testShouldPromoteDeferredHardwareRouteWhenUndimmedAtFullBrightness() {
+        XCTAssertTrue(BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+            deferredHardwarePromotion: true, appliedValue: 1.0, stillDimmed: false))
+        XCTAssertTrue(BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+            deferredHardwarePromotion: true, appliedValue: 0.999, stillDimmed: false))
+    }
+
+    func testShouldPromoteDeferredHardwareRouteRequiresDeferredFlag() {
+        XCTAssertFalse(BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+            deferredHardwarePromotion: false, appliedValue: 1.0, stillDimmed: false))
+    }
+
+    func testShouldPromoteDeferredHardwareRouteRequiresFullBrightness() {
+        XCTAssertFalse(BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+            deferredHardwarePromotion: true, appliedValue: 0.9989, stillDimmed: false))
+        XCTAssertFalse(BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+            deferredHardwarePromotion: true, appliedValue: 0.5, stillDimmed: false))
+    }
+
+    func testShouldPromoteDeferredHardwareRouteWaitsWhileStillDimmed() {
+        XCTAssertFalse(BrightnessSupport.shouldPromoteDeferredHardwareRoute(
+            deferredHardwarePromotion: true, appliedValue: 1.0, stillDimmed: true))
+    }
+
+    // MARK: One-time DDC cache rechecks
+
+    func testRecheckMigrationsClearBothWriteOnlyCachesOnce() {
+        let suiteLock = DefaultsSuiteLock("brightness-support-recheck")
+        defer { withExtendedLifetime(suiteLock) {} }
+        let suiteName = "hexa.tests.brightness-support-recheck"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("expected isolated UserDefaults suite")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(["path-a"], forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.set(["path-b": Date()], forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
+
+        Defaults.recheckBrightnessDDCWriteOnlyPaths(in: defaults)
+        XCTAssertTrue(defaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked))
+        XCTAssertTrue(defaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked))
+        XCTAssertNil(defaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths))
+        XCTAssertNil(defaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts))
+
+        // Second run must leave freshly recorded verdicts untouched.
+        defaults.set(["path-c"], forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.set(["path-d": Date()], forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
+        Defaults.recheckBrightnessDDCWriteOnlyPaths(in: defaults)
+        XCTAssertEqual(defaults.stringArray(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths), ["path-c"])
+        XCTAssertNotNil(defaults.dictionary(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts))
+
+        // HDMI converter migration clears both caches once, then preserves subsequent ones.
+        Defaults.recheckBrightnessDDCHDMIConverterPaths(in: defaults)
+        XCTAssertTrue(defaults.bool(forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked))
+        XCTAssertNil(defaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths))
+        XCTAssertNil(defaults.object(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts))
+
+        defaults.set(["path-e"], forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.set(["path-f": Date()], forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
+        Defaults.recheckBrightnessDDCHDMIConverterPaths(in: defaults)
+        XCTAssertEqual(defaults.stringArray(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths), ["path-e"])
+        XCTAssertNotNil(defaults.dictionary(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts))
+
+        // Non-portable DDC verdict and recheck keys stay excluded from settings backups.
+        let exported = SettingsBackupSupport.exportKeys()
+        XCTAssertFalse(exported.contains(DefaultsKey.brightnessDDCWriteOnlyVerdicts))
+        XCTAssertFalse(exported.contains(DefaultsKey.brightnessDDCReadChecksumRechecked))
+        XCTAssertFalse(exported.contains(DefaultsKey.brightnessDDCHDMIConverterRechecked))
     }
 }

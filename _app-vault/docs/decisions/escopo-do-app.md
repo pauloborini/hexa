@@ -1,10 +1,11 @@
 # escopo-do-app
 
-Affects: [app-updates, monitor, uninstaller, cleaner, maintenance-tasks, media-tools, dynamic-island, mixer, keep-awake, keyboard-light, screen-brightness, kill-process, port-manager, screen-capture, dock-display-lock, menu-bar-hiding]
+Affects: [app-updates, monitor, uninstaller, cleaner, maintenance-tasks, media-tools, dynamic-island, mixer, keep-awake, keyboard-light, screen-brightness, kill-process, port-manager, screen-capture, dock-display-lock, menu-bar-hiding, window-manager]
 
 ### DEC-001 — Escopo fechado em módulos próprios
 
-O hexa contém exatamente: App Updates, Monitor de sistema, Uninstaller, Cleaner + Tarefas de manutenção, Media tools, Dynamic Island, Mixer por app, Keep Awake, Luz do teclado, Brilho de tela, Kill Process + Port Manager, Captura de tela + OCR de tela (com atalhos globais), Dock em uma tela e Ícones da menu bar.
+O hexa contém exatamente: App Updates, Monitor de sistema, Uninstaller, Cleaner + Tarefas de manutenção, Media tools, Dynamic Island, Mixer por app, Keep Awake, Luz do teclado, Brilho de tela, Kill Process + Port Manager, Captura de tela + OCR de tela (com atalhos globais), Dock em uma tela, Ícones da menu bar e Gerenciador de janelas.
+_Alterado 2026-11-22 — era: escopo sem Gerenciador de janelas. Motivo: o operador incluiu o módulo de Gerenciador de janelas (posicionamento por atalhos, grid visual e arrasto magnético sob demanda) no escopo._
 _Alterado 2026-11-08 — era: escopo sem Dock em uma tela nem Ícones da menu bar. Motivo: o operador confirmou os dois utilitários no escopo._
 _Alterado 2026-10-22 — era: Cleaner, sem Tarefas de manutenção. Motivo: o operador criou as Tarefas de manutenção (flush DNS, purge de memória, snapshots locais, Launch Services, Spotlight e limpeza do Homebrew) e confirmou a inclusão no escopo, ao lado do Cleaner._
 _Alterado 2026-10-06 — era: escopo fechado em 11 módulos. Motivo: o operador usa captura de tela e OCR (com atalhos) e pediu o módulo._
@@ -164,3 +165,27 @@ _Alterado 2026-11-17 — era: itens cuja identidade ou posição não puder ser 
 _Alterado 2026-11-17 — era: clique fora encerrava somente o modo Instantâneo; os modos de 5 ou 10 segundos aguardavam o prazo. Motivo: o operador confirmou o recolhimento por clique fora também nos modos temporizados, com prazo máximo reiniciado pela interação na barra._
 
 Decisão do operador em 2026-11-08.
+
+### DEC-044 — Ciclo de posições com o mesmo atalho
+
+O Gerenciador de janelas oferece quatro colunas de 25% da área útil do monitor. Com a opção de ciclo habilitada, o primeiro toque aplica a posição configurada e os próximos toques no mesmo atalho percorrem as posições da mesma largura, da direita para a esquerda, com retorno à posição mais à direita. O ciclo se aplica a metades laterais, terços, dois terços e colunas de um quarto. A opção começa desligada e, quando ligada, tem prioridade sobre o ciclo de larguras das metades laterais. A grade continua aplicando a posição selecionada diretamente.
+
+Decisão do operador em 2026-11-22.
+
+### DEC-049 — Sobre é a superfície do atualizador do próprio Hexa
+
+A verificação e a instalação de atualizações do próprio Hexa ficam na tela Sobre, com o botão Verificar atualizações, o estado da busca e o download manual da versão mais recente. O módulo App Updates não atualiza o Hexa: ele segue exclusivo de apps de terceiros. A separação evita confundir a atualização do próprio app com a de outros apps.
+
+Decisão do operador em 2026-11-10.
+
+### DEC-050 — Módulo novo não entra sozinho na instalação de quem já usa o Hexa
+
+Um módulo novo não entra sozinho na instalação de quem já usa o Hexa. Atualizar o app não instala módulo novo nem acrescenta itens ao painel e aos Ajustes sem escolha do usuário. A lista de módulos instalados por padrão é fixada por teste e só muda por decisão explícita. O módulo novo é oferecido na central de Recursos e nas notas da versão.
+
+Decisão do operador em 2026-11-25, por delegação ao agente.
+
+### DEC-051 — Backup de ajustes leva só preferências portáveis
+
+A exportação de ajustes grava só preferências que fazem sentido em outro Mac. Não viajam a opção de iniciar com o Mac, as pastas escolhidas, o estado das telas desligadas, a capacidade DDC dos monitores e o ajuste de encaixe no entalhe, que são dados de cada máquina. A importação substitui os ajustes atuais, guarda uma cópia restaurável e devolve ao macOS os atalhos que o Hexa assumiu. Se o arquivo não trouxer configurações da Dynamic Island, as desta máquina são mantidas.
+
+Decisão do operador em 2026-11-25, por delegação ao agente.

@@ -179,4 +179,17 @@ final class FeatureSidebarSearchRoutingTests: XCTestCase {
         XCTAssertFalse(routes("Câmera").contains { $0.system == .featureHub && $0.featureHubTab == 1 })
         XCTAssertFalse(routes("Microfone").contains { $0.system == .featureHub && $0.featureHubTab == 1 })
     }
+
+    func testWindowManagerSearchRoutesOperationAndSettingsTabs() {
+        let opRoute = routes("Gerenciador de janelas").first { $0.feature == .windowManager }
+        XCTAssertEqual(opRoute?.featureSettingsMode, false)
+
+        let snapRoute = routes("Arrasto magnético nas bordas").first { $0.feature == .windowManager }
+        XCTAssertEqual(snapRoute?.featureSettingsMode, true)
+
+        let state = FeatureWorkspaceState()
+        state.openSidebarFeature(.windowManager, route: snapRoute, monitorKind: nil, keepsMonitorSettings: false)
+        XCTAssertEqual(state.feature, .windowManager)
+        XCTAssertTrue(state.featureSettingsMode)
+    }
 }

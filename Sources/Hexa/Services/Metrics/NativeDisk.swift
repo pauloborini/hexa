@@ -15,7 +15,8 @@ enum NativeDisk {
     }
 
     static func mediaID(bsdName: String, isCurrent: () -> Bool) -> UInt64? {
-        guard isCurrent(), let matching = IOBSDNameMatching(kIOMainPortDefault, 0, bsdName),
+        guard !bsdName.isEmpty, isCurrent(),
+              let matching = IOBSDNameMatching(kIOMainPortDefault, 0, bsdName),
               isCurrent() else { return nil }
         let entry = IOServiceGetMatchingService(kIOMainPortDefault, matching)
         guard entry != 0 else { return nil }
@@ -26,14 +27,16 @@ enum NativeDisk {
     }
 
     static func fileSystemName(bsdName: String, isCurrent: () -> Bool) -> String? {
-        guard isCurrent(), let session = DASessionCreate(kCFAllocatorDefault), isCurrent(),
+        guard !bsdName.isEmpty, isCurrent(),
+              let session = DASessionCreate(kCFAllocatorDefault), isCurrent(),
               let disk = DADiskCreateFromBSDName(kCFAllocatorDefault, session, bsdName),
               isCurrent(), let description = DADiskCopyDescription(disk) as NSDictionary? else { return nil }
         return description[kDADiskDescriptionVolumeTypeKey] as? String
     }
 
     static func identity(bsdName: String, isCurrent: () -> Bool) -> Identity {
-        guard isCurrent(), let matching = IOBSDNameMatching(kIOMainPortDefault, 0, bsdName),
+        guard !bsdName.isEmpty, isCurrent(),
+              let matching = IOBSDNameMatching(kIOMainPortDefault, 0, bsdName),
               isCurrent() else { return Identity() }
         let entry = IOServiceGetMatchingService(kIOMainPortDefault, matching)
         guard entry != 0 else { return Identity() }
@@ -65,8 +68,8 @@ enum NativeDisk {
             while isCurrent() {
                 let parent = IOIteratorNext(iterator)
                 guard parent != 0 else { break }
+                defer { IOObjectRelease(parent) }
                 visit(parent)
-                IOObjectRelease(parent)
             }
         }
         visit(entry)
@@ -85,36 +88,46 @@ enum NativeDisk {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
         guard service != 0 else { return nil }
         defer { IOObjectRelease(service) }
-        let type = CFUUIDCreateFromString(nil, "AA0FA6F9-C2D6-457F-B10B-59A13253292F" as CFString)!
-        let pluginID = CFUUIDCreateFromString(nil, "C244E858-109C-11D4-91D4-0050E4C6426F" as CFString)!
-        let interfaceID = CFUUIDCreateFromString(nil, "CCD1DB19-FD9A-4DAF-BF95-12454B230AB6" as CFString)!
+        guard let type = CFUUIDCreateFromString(kCFAllocatorDefault, "AA0FA6F9-C2D6-457F-B10B-59A13253292F" as CFString),
+              let pluginID = CFUUIDCreateFromString(kCFAllocatorDefault, "C244E858-109C-11D4-91D4-0050E4C6426F" as CFString),
+              let interfaceID = CFUUIDCreateFromString(kCFAllocatorDefault, "CCD1DB19-FD9A-4DAF-BF95-12454B230AB6" as CFString) else {
+            return nil
+        }
         var plugin: UnsafeMutablePointer<UnsafeMutablePointer<IOCFPlugInInterface>?>?
         var score: Int32 = 0
         guard isCurrent() else { return nil }
         let result = IOCreatePlugInInterfaceForService(service, type, pluginID, &plugin, &score)
         guard let plugin else { return nil }
         defer { IODestroyPlugInInterface(plugin) }
-        guard result == KERN_SUCCESS, let pluginTable = plugin.pointee else { return nil }
+        guard result == KERN_SUCCESS, let pluginTable = plugin.pointee,
+              let queryInterface = pluginTable.pointee.QueryInterface else { return nil }
         var interface: UnsafeMutableRawPointer?
-        guard isCurrent(), pluginTable.pointee.QueryInterface(plugin, CFUUIDGetUUIDBytes(interfaceID), &interface) == 0,
+        guard isCurrent(), queryInterface(plugin, CFUUIDGetUUIDBytes(interfaceID), &interface) == 0,
               let interface else { return nil }
-        let table = interface.load(as: UnsafeRawPointer.self)
+        guard let table = interface.load(as: UnsafeRawPointer?.self),
+              let releasePtr = table.load(fromByteOffset: 24, as: UnsafeRawPointer?.self) else { return nil }
         // IUNKNOWN_C_GUTS followed by version/revision and SMARTReadData.
         // The SDK does not expose IONVMeSMARTInterface to Swift.
         typealias Release = @convention(c) (UnsafeMutableRawPointer) -> UInt32
         typealias Read = @convention(c) (UnsafeMutableRawPointer, UnsafeMutableRawPointer) -> Int32
-        let release = unsafeBitCast(table.load(fromByteOffset: 24, as: UnsafeRawPointer.self), to: Release.self)
+        let release = unsafeBitCast(releasePtr, to: Release.self)
         defer { _ = release(interface) }
-        guard isCurrent() else { return nil }
-        let read = unsafeBitCast(table.load(fromByteOffset: 40, as: UnsafeRawPointer.self), to: Read.self)
+        guard isCurrent(),
+              let readPtr = table.load(fromByteOffset: 40, as: UnsafeRawPointer?.self) else { return nil }
+        let read = unsafeBitCast(readPtr, to: Read.self)
         var bytes = [UInt8](repeating: 0, count: 512)
-        guard bytes.withUnsafeMutableBytes({ read(interface, $0.baseAddress!) }) == KERN_SUCCESS else { return nil }
+        let readStatus = bytes.withUnsafeMutableBytes { buffer -> Int32? in
+            guard let baseAddress = buffer.baseAddress else { return nil }
+            return read(interface, baseAddress)
+        }
+        guard isCurrent(), readStatus == KERN_SUCCESS else { return nil }
         return decodeSMART(bytes)
     }
 
     static func decodeSMART(_ bytes: [UInt8]) -> DiskSMARTReading? {
         guard bytes.count == 512 else { return nil }
         func number(_ offset: Int) -> UInt64? {
+            guard offset >= 0, offset + 16 <= bytes.count else { return nil }
             guard bytes[(offset + 8)..<(offset + 16)].allSatisfy({ $0 == 0 }) else { return nil }
             return (0..<8).reduce(UInt64(0)) { $0 | (UInt64(bytes[offset + $1]) << ($1 * 8)) }
         }

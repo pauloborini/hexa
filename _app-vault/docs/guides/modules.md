@@ -4,7 +4,7 @@ O Hexa reúne os módulos especializados do escopo (DEC-001) em uma única aplic
 
 Cada módulo foi construído sob o princípio de operação sob demanda (DEC-002): painéis e varreduras só rodam quando abertos ou pedidos, sem polling em fundo. As únicas exceções são as nominadas no próprio DEC-002 (atividades da Dynamic Island habilitada, sessão ativa do Fan Control, observadores do Mixer e agendamento do Cleaner configurado pelo usuário) e as leituras opt-in na menu bar (DEC-003).
 
-Os módulos são instalados e desinstalados em **Recursos > Catálogo**; a finalidade de cada permissão e os módulos que a usam ficam em **Recursos > Permissões**. Kill Process, Port Manager, Fan Control, Dock em uma tela e Ícones da menu bar vêm desinstalados por padrão.
+Os módulos são instalados e desinstalados em **Recursos > Catálogo**; a finalidade de cada permissão e os módulos que a usam ficam em **Recursos > Permissões**. Kill Process, Port Manager, Fan Control, Dock em uma tela, Ícones da menu bar e Gerenciador de janelas vêm desinstalados por padrão (DEC-050).
 
 ---
 
@@ -148,8 +148,8 @@ Ajuste da retroiluminação do teclado para notebooks Mac com chip Apple Silicon
 Central integrada para controle de monitores múltiplos (tela **Telas** no app):
 
 - **Tela Interna e Telas Apple:** Brilho pelo controle de brilho do próprio sistema.
-- **Monitores Externos via DDC/CI:** Envia comandos de controle de tela (Display Data Channel) diretamente aos monitores conectados via HDMI, DisplayPort ou Thunderbolt, permitindo alterar o brilho físico do monitor externo, inclusive pelas teclas de brilho ou atalhos globais.
-- **Escurecimento por Software (Software Dimming - DEC-013):** Para telas cuja conexão não aceita DDC (adaptadores HDMI, TVs), o controle escurece a própria imagem pela curva de gama. Em monitores DDC, uma faixa opcional por software estende o escurecimento abaixo do mínimo do monitor.
+- **Monitores Externos via DDC/CI:** Envia comandos de controle de tela (Display Data Channel) diretamente aos monitores conectados via HDMI (incluindo adaptadores HDMI integrados, com retorno automático para DDC quando voltam a responder), DisplayPort ou Thunderbolt, permitindo alterar o brilho físico do monitor externo pelas teclas de brilho ou atalhos globais.
+- **Escurecimento por Software (Software Dimming - DEC-013):** Para telas cuja conexão não aceita DDC (certos adaptadores HDMI, TVs), o controle escurece a própria imagem pela curva de gama. Em monitores DDC, uma faixa opcional por software estende o escurecimento abaixo do mínimo do monitor.
 - **Ligar e Desligar Telas:** Cada tela conectada pode ser desligada e religada pelo app, sem alterar o arranjo de telas salvo no sistema.
 - **Sem Hacks Arriscados:** O módulo não realiza elevação artificial de brilho acima do teto XDR nem altera parâmetros arriscados do painel.
 
@@ -176,15 +176,15 @@ Conjunto de utilitários rápidos para desenvolvedores e administradores de sist
 Ferramenta completa para capturas gráficas e extração óptica de caracteres:
 
 ### Captura de Tela
-- **Modos de Captura:** Seleção de área ou de janela, captura da tela cheia e captura com rolagem.
+- **Modos de Captura:** Seleção de área congelada (com clique sem arrasto capturando a janela viva sob o cursor para preservar camadas protegidas ou vídeo), seleção de janela, captura da tela cheia e captura com rolagem.
 - **Atalhos Globais:** Atalhos de teclado configuráveis, desligados por padrão (captura, tela inteira, editar a captura mais recente, editar a imagem copiada, capturas recentes e copiar texto).
 - **Salvamento Direto por Padrão (DEC-030):** Ao realizar uma captura em uma instalação nova, o arquivo é salvo imediatamente na pasta de capturas escolhida pelo usuário, garantindo que nada se perca.
 - **Prévia Pós-Captura Opt-In (DEC-024):** A exibição de prévias flutuantes na tela ou na Dynamic Island é desligada por padrão. O usuário pode ativá-la nos Ajustes de Captura caso prefira inspecionar a imagem antes de salvar.
-- **Editor Embutido:** Ferramentas de anotação incluindo setas, retângulos, elipses, linhas, traço livre, marca-texto, números sequenciais, texto, adesivos, recorte, pixelização e tarja para ocultar senhas e informações confidenciais.
+- **Editor Embutido:** Ferramentas de anotação incluindo setas, retângulos, elipses, linhas, traço livre, marca-texto, números sequenciais, texto inline com guarda de descarte, adesivos, recorte, pixelização e tarja para ocultar senhas e informações confidenciais, liberando a memória gráfica ao fechar.
 
 ### OCR de Tela
-- Reconhecimento óptico de caracteres baseado na tecnologia nativa Apple Vision.
-- Permite desenhar um retângulo sobre qualquer texto exibido no monitor (inclusive em fotos, diagramas, vídeos ou textos não copiáveis) e envia o conteúdo lido diretamente para a área de transferência, com leitura opcional de QR codes.
+- Reconhecimento óptico de caracteres baseado na tecnologia nativa Apple Vision, com suporte a recortes longos e múltiplas colunas.
+- Permite desenhar um retângulo sobre qualquer texto exibido no monitor (inclusive em fotos, diagramas, vídeos ou textos não copiáveis) e envia o conteúdo lido diretamente para a área de transferência, com leitura opcional de múltiplos QR codes na mesma captura.
 
 ---
 
@@ -209,6 +209,39 @@ Separa os itens de outros apps na menu bar em seções visível e oculta (DEC-04
 - **Segurança:** Itens cuja identidade ou posição não puder ser lida ficam visíveis. Desligar o módulo libera todos os itens.
 - **macOS 27 ou mais novo:** Usa uma restrição de visibilidade do próprio sistema, que exige Acessibilidade e só funciona em build assinado com Developer ID; em outro build o módulo avisa que não pode ocultar com segurança. Os itens do próprio macOS (Central de Controle, Tocando Agora, relógio etc.) ficam sempre visíveis.
 - **Até o macOS 26:** Usa um separador que, recolhido, empurra para fora da tela os itens à esquerda dele.
+
+---
+
+## 15. Gerenciador de Janelas
+
+Organiza e redimensiona janelas em posições precisas na tela através de atalhos de teclado e gestos:
+
+- **Posicionamento por Atalhos:** Encaixe rápido da janela ativa em metades (esquerda, centro, direita, topo, base), terços (esquerdo, centro, direito), dois terços, quatro colunas de 25% da área útil do monitor, quadrantes/cantos, maximizar, quase-maximizar, centralizar e restaurar, além de mover a janela entre monitores sem distorção.
+- **Ciclo de Posições (DEC-044):** Com a opção de ciclo na mesma largura habilitada (desligada por padrão e com prioridade sobre o ciclo de larguras das metades laterais), o primeiro toque aplica a posição configurada e repetir o mesmo atalho percorre as posições da mesma largura da direita para a esquerda, retornando à posição mais à direita (metades, terços, dois terços e colunas de 25%). Quando desligada, permanece disponível o ciclo de larguras nas metades laterais (entre metade, dois terços e um terço). Na grade visual, o clique aplica sempre a posição selecionada diretamente.
+- **Arrasto Magnético (Drag-to-Edge):** Arraste uma janela até as bordas ou cantos do display (opcionalmente segurando uma tecla modificadora) para exibir a prévia estilizada com os tokens semânticos neutros do design system do Hexa (DEC-017), usando borda informativa neutra em vez da cor de destaque do sistema, e soltá-la na posição correspondente.
+- **Grade Visual na Janela Operacional:** A tela do módulo no Hexa oferece um seletor visual interativo para aplicar diretamente qualquer layout com um clique do mouse ou navegar por teclado.
+- **Resiliência a Dimensões Mínimas:** Para janelas com restrições rígidas de tamanho mínimo (`minSize`), o motor ancora a janela na área visível da tela em vez de quebrar o enquadramento.
+- **Conformidade Sob Demanda (DEC-002):** Zero polling ou timers em segundo plano. Os listeners são puramente orientados a eventos, acionados apenas quando atalhos globais ou arrastos de janela ocorrem.
+
+---
+
+## Atualização do Hexa (DEC-012, DEC-045 a DEC-049)
+
+Na tela **Sobre**, o botão **Verificar atualizações** consulta o feed do GitHub somente quando você pede (DEC-012). A tela mostra o estado da busca: procurando, versão mais recente, atualização disponível, falha na verificação ou build de desenvolvimento, que não consulta o feed público. Quando há uma versão nova, o diálogo padrão do Sparkle pede sua confirmação, e a instalação só começa depois dela. Antes de substituir o app, a atualização é validada pela assinatura EdDSA, além da assinatura Apple e da notarização (DEC-045).
+
+- **Falha:** a versão instalada continua utilizável, e o botão **Baixar a versão mais recente** abre a página das releases para instalação manual (DEC-047).
+- **Transição a partir da 0.1.0:** a versão 0.1.0 não tem atualizador. Quem a usa instala a 0.2.0 ou superior pelo DMG; as versões seguintes podem vir pelo app (DEC-048).
+- **Não se confunde com App Updates:** o módulo App Updates atualiza apps de terceiros e não lista o próprio Hexa (DEC-049).
+
+---
+
+## Backup de Ajustes (Avançado, DEC-051)
+
+Em **Avançado**, o botão **Exportar configurações** grava as preferências do Hexa em um arquivo `Hexa Settings.plist`. **Importar configurações** substitui as configurações atuais pelas do arquivo e reinicia o app. Antes disso, uma cópia das configurações atuais fica guardada, e **Restaurar configurações anteriores** a devolve.
+
+- Não viajam no arquivo: “Iniciar junto com o Mac”, as permissões do macOS, as pastas escolhidas (capturas e Downloads) e o estado local de cada Mac, como as telas desligadas e a capacidade DDC dos monitores.
+- Atalhos do macOS que o Hexa assumiu voltam ao macOS na importação; reativá-los na máquina de destino é uma escolha nova.
+- Se o arquivo não tiver configurações da Dynamic Island, as desta máquina são mantidas.
 
 ---
 

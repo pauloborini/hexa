@@ -9,7 +9,7 @@ import Foundation
 /// below and the unit tests can reason about pages without pulling UI in.
 enum SettingsPage: Hashable {
     case general, menuBar, features, monitor
-    case cleaner, uninstaller, appUpdates, media, screenshot, mixer, killProcess, portManager, notch, dockDisplayLock, menuBarHiding
+    case cleaner, uninstaller, appUpdates, media, screenshot, mixer, killProcess, portManager, notch, dockDisplayLock, menuBarHiding, windowManager
     case shortcuts, advanced, about, releaseNotes, support
 }
 
@@ -234,6 +234,7 @@ extension AppFeature {
         case .portManager: return FeatureSettingsDestination(.portManager)
         case .dockDisplayLock: return FeatureSettingsDestination(.dockDisplayLock)
         case .menuBarHiding: return FeatureSettingsDestination(.menuBarHiding)
+        case .windowManager: return FeatureSettingsDestination(.windowManager)
         case .appUpdates: return FeatureSettingsDestination(.appUpdates)
         case .screenshot:
             return FeatureSettingsDestination(.screenshot, sectionAnchor: .screenshot)
@@ -271,6 +272,7 @@ enum FeatureVisibilitySupport {
         case .portManager: return [.portManager]
         case .dockDisplayLock: return [.dockDisplayLock]
         case .menuBarHiding: return [.menuBarHiding]
+        case .windowManager: return [.windowManager]
         case .screenshot: return [.screenshot, .screenOCR]
         case .mixer: return [.mixer]
         case .notch: return [.notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories, .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads, .notchWatch]

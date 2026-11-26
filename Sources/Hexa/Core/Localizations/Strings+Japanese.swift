@@ -306,6 +306,8 @@ extension Strings {
         uninstallerDropSubtitle: "またはスキャンするアプリを選択",
         uninstallerChoose: "アプリを選択…",
         uninstallerPickerTitle: "アプリを選択",
+        uninstallerPickerMultiTitle: "複数のアプリを選択",
+        uninstallerPickerScanSelection: "選択項目をスキャン",
         uninstallerPickerSearch: "アプリを検索",
         uninstallerPickerEmpty: "アプリが見つかりません",
         uninstallerEmptyNote: "確認なしに削除されるものはありません。",

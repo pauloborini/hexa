@@ -420,6 +420,7 @@ private struct OnboardingModuleRow: View {
         case .portManager: return "point.3.connected.trianglepath.dotted"
         case .dockDisplayLock: return "panel-bottom"
         case .menuBarHiding: return "menubar.dock.rectangle"
+        case .windowManager: return "layout-grid"
         case .screenCapture: return "camera.viewfinder"
         }
     }

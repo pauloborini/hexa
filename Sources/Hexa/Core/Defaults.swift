@@ -92,9 +92,16 @@ enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    static let brightnessDDCWriteOnlyVerdicts = "brightnessDDCWriteOnlyVerdicts"
     // Set once the paths cached before paired discovery requests have been
     // dropped, so a monitor written off then is classified again exactly once.
     static let brightnessDDCWriteOnlyPathsRechecked = "brightnessDDCWriteOnlyPathsRechecked"
+    // Set once the paths cached before the read-request checksum seed included
+    // the sub-address have been dropped.
+    static let brightnessDDCReadChecksumRechecked = "brightnessDDCReadChecksumRechecked"
+    // Set once the paths cached before built-in HDMI converter target
+    // addressing have been dropped.
+    static let brightnessDDCHDMIConverterRechecked = "brightnessDDCHDMIConverterRechecked"
     // Per-monitor connection paths a person has told this app to dim in
     // software: the only way to know a write-only channel swallows its writes
     // is to watch the panel, which no probe can do.
@@ -267,6 +274,7 @@ enum DefaultsKey {
     static let windowLayoutScreenGap = "windowLayoutScreenGap" // px between a snapped window and the visible frame edge
     static let windowLayoutMarginPercent = "windowLayoutMarginPercent" // per-edge percentage for margin maximize
     static let windowLayoutSideRepeatCyclesThirds = "windowLayoutSideRepeatCyclesThirds" // repeated Left/Right cycles half, 2/3, 1/3 on the same display
+    static let windowLayoutCycleSameWidth = "windowLayoutCycleSameWidth"
     static let windowLayoutIgnoredApps = "windowLayoutIgnoredApps" // apps that temporarily disable window layout while focused
     static let panelCollapsedSections = "panelCollapsedSections"
     static let panelCollapsedResetVersion = "panelCollapsedResetVersion"
@@ -423,6 +431,9 @@ enum DefaultsKey {
     static let pointerDisplayShortcut = "pointerDisplayShortcut"
     static let windowEdgeSnapEnabled = "windowEdgeSnapEnabled"
     static let windowEdgeSnapDisabledZones = "windowEdgeSnapDisabledZones" // comma-separated visual zone ids
+    static let windowManagerReserveStageManagerSpace = "windowManagerReserveStageManagerSpace"
+    static let windowManagerShortcutProfile = "windowManagerShortcutProfile"
+    static let windowManagerSnapModifier = "windowManagerSnapModifier"
     static let windowGestureEnabled = "windowGestureEnabled"
     static let windowGestureModifiers = "windowGestureModifiers"
     static let windowGestureRaiseWindow = "windowGestureRaiseWindow"
@@ -795,6 +806,7 @@ enum Defaults {
         DefaultsKey.windowLayoutScreenGap: 0,
         DefaultsKey.windowLayoutMarginPercent: 5.0,
         DefaultsKey.windowLayoutSideRepeatCyclesThirds: false,
+        DefaultsKey.windowLayoutCycleSameWidth: false,
         DefaultsKey.menuBarMetricOrder: defaultMenuBarMetricOrder.joined(separator: ","),
         DefaultsKey.menuBarCombineTemperatures: true,
         DefaultsKey.menuBarSeparateMetrics: false,
@@ -997,6 +1009,9 @@ enum Defaults {
         DefaultsKey.pointerDisplayShortcut: GlobalShortcut.pointerNextDisplayDefault.storageValue,
         DefaultsKey.windowEdgeSnapEnabled: false,
         DefaultsKey.windowEdgeSnapDisabledZones: "",
+        DefaultsKey.windowManagerReserveStageManagerSpace: true,
+        DefaultsKey.windowManagerShortcutProfile: WindowShortcutProfile.standard.rawValue,
+        DefaultsKey.windowManagerSnapModifier: WindowSnapModifier.none.rawValue,
         DefaultsKey.windowGestureEnabled: false,
         DefaultsKey.windowGestureRaiseWindow: false,
         DefaultsKey.windowLayoutShortcutLeft: GlobalShortcut.windowLayoutLeftDefault.storageValue,
@@ -1031,7 +1046,7 @@ enum Defaults {
         DefaultsKey.windowLayoutShortcutLeftMiddleQuarter: "",
         DefaultsKey.windowLayoutShortcutRightMiddleQuarter: "",
         DefaultsKey.windowLayoutShortcutRightQuarter: "",
-        DefaultsKey.windowLayoutShortcutPreviousDisplay: "",
+        DefaultsKey.windowLayoutShortcutPreviousDisplay: GlobalShortcut.windowLayoutPreviousDisplayDefault.storageValue,
         DefaultsKey.windowLayoutShortcutNextDisplay: GlobalShortcut.windowLayoutNextDisplayDefault.storageValue,
         DefaultsKey.windowLayoutShortcutTopLeftSixth: "",
         DefaultsKey.windowLayoutShortcutTopCenterSixth: "",
@@ -1061,6 +1076,7 @@ enum Defaults {
         migrateOrphanedCaptureShortcut(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
+        recheckBrightnessDDCHDMIConverterPaths(in: defaults)
     }
 
     /// Retire the v1 always-hidden toggle without touching NSStatusItem's
@@ -1131,15 +1147,30 @@ enum Defaults {
         defaults.set(true, forKey: DefaultsKey.notchAutoNowPlayingDefaultApplied)
     }
 
-    /// Discovery used to send one request per read, which reads a monitor that
-    /// answers only paired requests as write-only. That verdict is cached and
-    /// never re-probed, so it would outlive the fix: drop the cache once.
+    /// Discovery used to send one request per read and omit the sub-address from
+    /// read-request checksums, which misclassified monitors as write-only. Drop
+    /// both legacy and dated write-only caches once so affected monitors are
+    /// probed again.
     static func recheckBrightnessDDCWriteOnlyPaths(in defaults: UserDefaults) {
-        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked) else {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCReadChecksumRechecked) else {
             return
         }
         defaults.set(true, forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked)
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCReadChecksumRechecked)
         defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
+    }
+
+    /// Built-in HDMI converters use a distinct I2C target address; drop cached
+    /// write-only verdicts once so monitors behind one are probed again on
+    /// the converter address.
+    static func recheckBrightnessDDCHDMIConverterPaths(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked) else {
+            return
+        }
+        defaults.set(true, forKey: DefaultsKey.brightnessDDCHDMIConverterRechecked)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyPaths)
+        defaults.removeObject(forKey: DefaultsKey.brightnessDDCWriteOnlyVerdicts)
     }
 
     /// The Companheiro was removed: its installed flag and saved choices, and

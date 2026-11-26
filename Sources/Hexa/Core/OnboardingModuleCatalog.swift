@@ -27,6 +27,7 @@ enum OnboardingModule: String, CaseIterable {
     case portManager
     case dockDisplayLock
     case menuBarHiding
+    case windowManager
     case screenCapture
 
     /// A lista final completa do grupo, nunca um subconjunto: é ela que a linha
@@ -64,6 +65,8 @@ enum OnboardingModule: String, CaseIterable {
             return [.dockDisplayLock]
         case .menuBarHiding:
             return [.menuBarHiding]
+        case .windowManager:
+            return [.windowManager]
         case .screenCapture:
             return [.screenshot, .screenOCR]
         }
@@ -81,7 +84,8 @@ enum OnboardingModule: String, CaseIterable {
         case .monitor:
             return hub.groupMonitor
         case .dynamicIsland, .screenCapture, .appUpdates, .fanControl, .uninstaller, .mediaTools,
-             .mixer, .keepAwake, .brightness, .killProcess, .portManager, .dockDisplayLock, .menuBarHiding:
+             .mixer, .keepAwake, .brightness, .killProcess, .portManager, .dockDisplayLock, .menuBarHiding,
+             .windowManager:
             return features[0].hubTitle(s, hub: hub)
         }
     }
@@ -99,7 +103,7 @@ enum OnboardingModule: String, CaseIterable {
         case .screenCapture:
             return hub.onboardingModuleCaptureDescription
         case .appUpdates, .fanControl, .uninstaller, .mediaTools, .mixer, .keepAwake, .brightness,
-             .killProcess, .portManager, .dockDisplayLock, .menuBarHiding:
+             .killProcess, .portManager, .dockDisplayLock, .menuBarHiding, .windowManager:
             return features[0].hubDescription(hub)
         }
     }

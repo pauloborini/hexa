@@ -57,6 +57,7 @@ struct SidebarSearchRoute: Equatable {
     var notchTab: NotchSettingsTab?
     var notchContentSection: NotchModule?
     var metric: MetricDetailKind?
+    var featureSettingsMode: Bool?
 
     /// Destinos alcançados pela consulta, na ordem de exibição. Função pura: só lê os textos que já
     /// existem no idioma; `isAvailable` descarta funcionalidades desligadas.
@@ -146,6 +147,29 @@ struct SidebarSearchRoute: Equatable {
                 if labels.contains(where: matches) {
                     routes.append(SidebarSearchRoute(feature: member))
                 }
+            }
+        }
+
+        // Gerenciador de janelas: operação (grade rápida) e aba de ajustes (atalhos, snap, margens, ignorados).
+        if isAvailable(.windowManager) {
+            let wm = FeatureStrings.windowManager(language)
+            let operationTerms = [wm.title, wm.hubDescription, wm.quickGridTitle, wm.categoryQuarterColumns]
+            let settingsTerms = [
+                wm.settingsDescription,
+                wm.behaviorSection,
+                wm.shortcutsToggle,
+                wm.sameWidthCycleToggle,
+                wm.edgeSnapToggle,
+                wm.stageManagerToggle,
+                wm.spacingSection,
+                wm.snapZonesSection,
+                wm.shortcutsSection,
+                wm.ignoredAppsSection,
+            ]
+            if settingsTerms.contains(where: matches) {
+                routes.append(SidebarSearchRoute(feature: .windowManager, featureSettingsMode: true))
+            } else if operationTerms.contains(where: matches) {
+                routes.append(SidebarSearchRoute(feature: .windowManager, featureSettingsMode: false))
             }
         }
         return routes
@@ -262,6 +286,9 @@ final class FeatureWorkspaceState: ObservableObject {
             selectMonitorMetric(kind)
         } else {
             selectFeature(feature)
+        }
+        if let settingsMode = route?.featureSettingsMode {
+            featureSettingsMode = settingsMode
         }
         if route?.metric != nil || !keepsMonitorSettings {
             monitorTabIsSettings = false

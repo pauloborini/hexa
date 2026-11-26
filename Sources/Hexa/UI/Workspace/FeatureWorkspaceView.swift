@@ -91,6 +91,8 @@ struct FeatureWorkspaceView: View {
                 return hub.screenshotSettingsDescription
             case .screenOCR:
                 return hub.screenOCRSettingsDescription
+            case .windowManager:
+                return FeatureStrings.windowManager(l10n.language).settingsDescription
             default:
                 break
             }
@@ -226,6 +228,15 @@ struct FeatureWorkspaceView: View {
             }
         } else if state.feature == .screenshot || state.feature == .screenOCR {
             settingsToggle(isOn: state.featureSettingsMode) { state.featureSettingsMode.toggle() }
+        } else if state.feature == .windowManager {
+            HexaSegmentControl(
+                [text.operation, l10n.s.panelSettings],
+                selection: Binding(
+                    get: { state.featureSettingsMode ? 1 : 0 },
+                    set: { state.featureSettingsMode = ($0 == 1) }
+                )
+            )
+            .fixedSize()
         } else if state.feature == .killProcess {
             let killStrings = FeatureStrings.killProcess(l10n.language)
             HexaIconButton(
@@ -589,6 +600,7 @@ struct FeatureWorkspaceView: View {
             case .portManager: PortManagerView().padding(.horizontal, HexaTheme.Spacing.xxl)
             case .dockDisplayLock: DockDisplayLockView()
             case .menuBarHiding: MenuBarHidingView()
+            case .windowManager: WindowManagerView(settingsMode: state.featureSettingsMode)
             case .mediaTools: MediaWorkspaceView(compact: false, toolPickerHoisted: true).padding(.horizontal, HexaTheme.Spacing.xxl)
             case .appUpdates:
                 if state.featureSettingsMode {
@@ -689,7 +701,7 @@ struct FeatureWorkspaceView: View {
         }
         switch state.feature {
         case .mixer, .keepAwake, .brightness, .fanControl, .connectedDevices,
-             .appUpdates, .screenshot, .screenOCR, .maintenanceTasks, .menuBarHiding:
+             .appUpdates, .screenshot, .screenOCR, .maintenanceTasks, .menuBarHiding, .windowManager:
             return true
         default:
             return false

@@ -306,6 +306,8 @@ extension Strings {
         uninstallerDropSubtitle: "veya taramak için birini seç",
         uninstallerChoose: "Uygulama seç…",
         uninstallerPickerTitle: "Uygulama seç",
+        uninstallerPickerMultiTitle: "Uygulamaları seç",
+        uninstallerPickerScanSelection: "Seçilenleri tara",
         uninstallerPickerSearch: "Uygulamalarda ara",
         uninstallerPickerEmpty: "Uygulama bulunamadı",
         uninstallerEmptyNote: "Onayın olmadan hiçbir şey kaldırılmaz.",

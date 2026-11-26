@@ -551,6 +551,8 @@ struct Strings {
     let uninstallerDropSubtitle: String
     let uninstallerChoose: String
     let uninstallerPickerTitle: String
+    let uninstallerPickerMultiTitle: String
+    let uninstallerPickerScanSelection: String
     let uninstallerPickerSearch: String
     let uninstallerPickerEmpty: String
     let uninstallerEmptyNote: String
@@ -1590,6 +1592,8 @@ extension Strings {
         uninstallerDropSubtitle: "ou escolha um para analisar",
         uninstallerChoose: "Escolher app…",
         uninstallerPickerTitle: "Escolher app",
+        uninstallerPickerMultiTitle: "Escolher apps",
+        uninstallerPickerScanSelection: "Verificar selecionados",
         uninstallerPickerSearch: "Buscar apps",
         uninstallerPickerEmpty: "Nenhum app encontrado",
         uninstallerEmptyNote: "Nada é removido sem a sua confirmação.",
@@ -2598,6 +2602,8 @@ extension Strings {
         uninstallerDropSubtitle: "or choose one to scan",
         uninstallerChoose: "Choose app…",
         uninstallerPickerTitle: "Choose app",
+        uninstallerPickerMultiTitle: "Choose apps",
+        uninstallerPickerScanSelection: "Scan selected",
         uninstallerPickerSearch: "Search apps",
         uninstallerPickerEmpty: "No apps found",
         uninstallerEmptyNote: "Nothing is removed without your confirmation.",
