@@ -306,6 +306,8 @@ extension Strings {
         uninstallerDropSubtitle: "alebo vyberte tú, ktorú chcete prehľadať",
         uninstallerChoose: "Vybrať aplikáciu…",
         uninstallerPickerTitle: "Vybrať aplikáciu",
+        uninstallerPickerMultiTitle: "Vybrať aplikácie",
+        uninstallerPickerScanSelection: "Skenovať vybrané",
         uninstallerPickerSearch: "Hľadať aplikácie",
         uninstallerPickerEmpty: "Nenašli sa žiadne aplikácie",
         uninstallerEmptyNote: "Nič sa neodstráni bez vášho potvrdenia.",

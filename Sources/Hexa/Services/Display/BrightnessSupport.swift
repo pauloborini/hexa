@@ -31,8 +31,106 @@ enum BrightnessSupport {
     static let luminanceCode: UInt8 = 0x10
     /// 7-bit I2C address DDC displays listen on.
     static let chipAddress: UInt32 = 0x37
+    /// 7-bit I2C target address used behind Apple Silicon built-in HDMI
+    /// converters (MCDP29XX).
+    static let hdmiConverterChipAddress: UInt32 = 0xB7
+    static let hdmiConverterProviderClass = "AppleDCPMCDP29XX"
     /// Sub-address DDC hosts write through.
     static let dataAddress: UInt32 = 0x51
+    /// Get VCP Feature Reply opcode in the DDC/CI protocol.
+    static let getVCPReplyOpcode: UInt8 = 0x02
+
+    static func ddcChipAddress(epicProviderClass: String?) -> UInt32 {
+        epicProviderClass == hdmiConverterProviderClass ? hdmiConverterChipAddress : chipAddress
+    }
+
+    static let ddcRetryDelays: [TimeInterval] = [2, 5, 10]
+
+    /// Bounded retry schedule for active external displays whose DCP AV service
+    /// has not appeared in the IORegistry yet. Advances through `delays`,
+    /// clamps to the active deadline when queried early or after a backward
+    /// clock shift, stops with `nil` when exhausted, and resets on discovery or
+    /// topology changes.
+    struct ServiceDiscoveryRetries {
+        private struct State {
+            var attempt: Int
+            var deadline: Date
+        }
+
+        let delays: [TimeInterval]
+        private var states: [UInt32: State] = [:]
+
+        init(delays: [TimeInterval] = BrightnessSupport.ddcRetryDelays) {
+            self.delays = delays
+        }
+
+        mutating func found(_ displayID: UInt32) {
+            states.removeValue(forKey: displayID)
+        }
+
+        mutating func retain(_ displayIDs: Set<UInt32>) {
+            states = states.filter { displayIDs.contains($0.key) }
+        }
+
+        mutating func reset() {
+            states.removeAll()
+        }
+
+        mutating func missing(_ displayID: UInt32, now: Date = Date()) -> TimeInterval? {
+            guard !delays.isEmpty else { return nil }
+            if var state = states[displayID] {
+                if state.attempt >= delays.count {
+                    return nil
+                }
+                if now < state.deadline {
+                    let scheduled = delays[state.attempt]
+                    let remaining = state.deadline.timeIntervalSince(now)
+                    if remaining > scheduled {
+                        state.deadline = now.addingTimeInterval(scheduled)
+                        states[displayID] = state
+                        return scheduled
+                    }
+                    return remaining
+                }
+                let nextAttempt = state.attempt + 1
+                guard nextAttempt < delays.count else {
+                    state.attempt = delays.count
+                    states[displayID] = state
+                    return nil
+                }
+                let delay = delays[nextAttempt]
+                guard delay > 0 else { return nil }
+                state.attempt = nextAttempt
+                state.deadline = now.addingTimeInterval(delay)
+                states[displayID] = state
+                return delay
+            }
+            let delay = delays[0]
+            guard delay > 0 else { return nil }
+            states[displayID] = State(attempt: 0, deadline: now.addingTimeInterval(delay))
+            return delay
+        }
+    }
+
+    /// Keeps an active software-dimmed monitor on its gamma dim across a
+    /// non-dead discovery probe so it does not flash to its hardware backlight
+    /// mid-discovery, while still switching back to hardware once undimmed.
+    static func keepsSoftwareDimOnDiscovery(previouslySoftware: Bool,
+                                            dimmed: Bool,
+                                            pending: Double?) -> Bool {
+        guard previouslySoftware, dimmed else { return false }
+        guard let pending else { return true }
+        return pending < 0.999
+    }
+
+    /// Promotes a display that kept software dimming across discovery back to
+    /// its hardware DDC route once software dimming reaches 100% and clears
+    /// `dimmedDisplays`.
+    static func shouldPromoteDeferredHardwareRoute(deferredHardwarePromotion: Bool,
+                                                   appliedValue: Double,
+                                                   stillDimmed: Bool) -> Bool {
+        deferredHardwarePromotion && appliedValue >= 0.999 && !stillDimmed
+    }
 
     // Field-proven pacing: displays lose I2C transactions that arrive back to
     // back, so every write waits first, reads settle longer, and failures
@@ -102,12 +200,12 @@ enum BrightnessSupport {
     }
 
     /// Wraps a DDC payload: length-tagged header, payload, XOR checksum. The
-    /// checksum seed covers the destination address, and the sub-address only
-    /// participates for multi-byte payloads (single-byte requests omit it).
+    /// checksum seed covers both the destination address and the sub-address
+    /// for every transaction, including single-byte read requests.
     static func packet(payload: [UInt8]) -> [UInt8] {
         var bytes: [UInt8] = [UInt8(0x80 | (payload.count + 1)), UInt8(payload.count)]
         bytes.append(contentsOf: payload)
-        let seed = UInt8(chipAddress << 1) ^ (payload.count == 1 ? 0 : UInt8(dataAddress))
+        let seed = UInt8(chipAddress << 1) ^ UInt8(dataAddress)
         bytes.append(bytes.reduce(seed) { $0 ^ $1 })
         return bytes
     }
@@ -123,13 +221,16 @@ enum BrightnessSupport {
     }
 
     /// Parses a Get VCP Feature reply: checksum first (seeded with the host
-    /// address the display answers to), then the big-endian maximum and
-    /// current values. Anything malformed reads as no reply.
+    /// address the display answers to), then the reply opcode (0x02), zero
+    /// result code, matching VCP code, and the big-endian maximum and current
+    /// values. Anything malformed reads as no reply.
     static func parseReply(_ reply: [UInt8],
                            code: UInt8 = luminanceCode) -> (current: UInt16, maximum: UInt16)? {
         guard reply.count >= replyLength else { return nil }
         let checksum = reply[0..<(reply.count - 1)].reduce(UInt8(0x50)) { $0 ^ $1 }
         guard checksum == reply[reply.count - 1],
+              reply[2] == getVCPReplyOpcode,
+              reply[3] == 0,
               reply[4] == code else { return nil }
         let maximum = UInt16(reply[6]) << 8 | UInt16(reply[7])
         let current = UInt16(reply[8]) << 8 | UInt16(reply[9])

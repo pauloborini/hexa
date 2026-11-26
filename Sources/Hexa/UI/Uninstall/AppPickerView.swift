@@ -14,25 +14,35 @@ struct AppPickerView: View {
     /// before `onAppear` starts the load, instead of showing "no apps found".
     @State private var hasLoadedApps = false
     @State private var isBrowsingApplications = false
+    @State private var selectedAppIDs = Set<String>()
 
     var compact = false
     var canBrowseApplications = false
+    var allowsMultipleSelection = false
+    var title: String? = nil
     var loadApps: () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }
     var onCancel: () -> Void
     var onSelect: (URL) -> Void
     var onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil
+    var onSelectMultiple: (([URL]) -> Void)? = nil
 
     init(compact: Bool = false,
          canBrowseApplications: Bool = false,
+         allowsMultipleSelection: Bool = false,
+         title: String? = nil,
          onCancel: @escaping () -> Void,
          onSelect: @escaping (URL) -> Void,
          onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil,
+         onSelectMultiple: (([URL]) -> Void)? = nil,
          loadApps: @escaping () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }) {
         self.compact = compact
         self.canBrowseApplications = canBrowseApplications
+        self.allowsMultipleSelection = allowsMultipleSelection
+        self.title = title
         self.onCancel = onCancel
         self.onSelect = onSelect
         self.onSelectApp = onSelectApp
+        self.onSelectMultiple = onSelectMultiple
         self.loadApps = loadApps
     }
 
@@ -53,6 +63,9 @@ struct AppPickerView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.hexa(.body))
             appList
+            if allowsMultipleSelection {
+                selectionFooter
+            }
         }
         .padding(compact ? HexaTheme.Spacing.s : HexaTheme.Spacing.l)
         .frame(width: compact ? nil : 520, height: compact ? nil : 560)
@@ -66,7 +79,7 @@ struct AppPickerView: View {
 
     private var header: some View {
         HStack(spacing: HexaTheme.Spacing.s) {
-            Text(l10n.s.uninstallerPickerTitle)
+            Text(title ?? l10n.s.uninstallerPickerTitle)
                 .font(compact ? .hexa(.body) : .hexa(.heading))
             Spacer()
             if canBrowseApplications {
@@ -104,12 +117,22 @@ struct AppPickerView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: HexaTheme.Spacing.xs) {
                     ForEach(apps) { app in
+                        let selected = selectedAppIDs.contains(app.id)
                         HexaListItem(
                             nsImage: app.icon,
                             title: app.name,
                             caption: app.bundleID ?? app.url.path,
+                            selected: allowsMultipleSelection && selected,
+                            accessory: {
+                                if allowsMultipleSelection {
+                                    HexaIcons.image(selected ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(selected ? HexaTheme.fgPrimary : HexaTheme.fgTertiary)
+                                }
+                            },
                             action: {
-                                if let onSelectApp {
+                                if allowsMultipleSelection {
+                                    toggleSelection(for: app)
+                                } else if let onSelectApp {
                                     onSelectApp(app)
                                 } else {
                                     onSelect(app.url)
@@ -122,6 +145,35 @@ struct AppPickerView: View {
             }
             .frame(height: compact ? 235 : nil)
         }
+    }
+
+    private var selectionFooter: some View {
+        HStack(spacing: HexaTheme.Spacing.s) {
+            Text(String(format: l10n.s.uninstallerSelectedFormat, selectedAppIDs.count, apps.count))
+                .font(.hexa(.label))
+                .foregroundStyle(HexaTheme.fgSecondary)
+            Spacer(minLength: 0)
+            Button(l10n.s.uninstallerPickerScanSelection) {
+                confirmMultipleSelection()
+            }
+            .buttonStyle(HexaActionButtonStyle())
+            .controlSize(compact ? .small : .regular)
+            .disabled(selectedAppIDs.isEmpty)
+        }
+    }
+
+    private func toggleSelection(for app: InstalledApps.InstalledApp) {
+        if selectedAppIDs.contains(app.id) {
+            selectedAppIDs.remove(app.id)
+        } else {
+            selectedAppIDs.insert(app.id)
+        }
+    }
+
+    private func confirmMultipleSelection() {
+        let selected = apps.filter { selectedAppIDs.contains($0.id) }.map(\.url)
+        guard !selected.isEmpty else { return }
+        onSelectMultiple?(selected)
     }
 
     private func loadAppsIfNeeded() {

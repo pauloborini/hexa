@@ -31,7 +31,7 @@ struct UninstallerView: View {
                     uninstaller.removeSelectedWithHomebrew(confirmation: confirmation)
                 }
             } message: { confirmation in
-                Text(String(format: l10n.s.homebrewConfirmUninstallBodyFormat, confirmation.package.displayName))
+                Text(String(format: l10n.s.homebrewConfirmUninstallBodyFormat, confirmation.packageDisplayNames))
             }
             .alert(l10n.s.uninstallerQuitTitle,
                    isPresented: Binding(get: { !pendingQuitNames.isEmpty },
@@ -94,16 +94,24 @@ struct UninstallerView: View {
             .padding(.bottom, HexaTheme.Spacing.pageGap)
         }
         .sheet(isPresented: $showingAppPicker) {
-            AppPickerView {
-                showingAppPicker = false
-            } onSelect: { url in
-                showingAppPicker = false
-                uninstaller.select(appURL: url)
-            } loadApps: { UninstallerSupport.offeredApplications() }
+            AppPickerView(allowsMultipleSelection: true,
+                          title: l10n.s.uninstallerPickerMultiTitle,
+                          onCancel: {
+                              showingAppPicker = false
+                          },
+                          onSelect: { url in
+                              showingAppPicker = false
+                              uninstaller.select(appURL: url)
+                          },
+                          onSelectMultiple: { urls in
+                              showingAppPicker = false
+                              uninstaller.select(appURLs: urls)
+                          },
+                          loadApps: { UninstallerSupport.offeredApplications() })
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let app = urls.first(where: { $0.pathExtension == "app" }) ?? urls.first else { return false }
-            return uninstaller.select(appURL: app)
+            guard !urls.isEmpty else { return false }
+            return uninstaller.select(appURLs: UninstallerSupport.droppedSelectionURLs(urls))
         } isTargeted: { dropTargeted = $0 }
     }
 
@@ -153,7 +161,8 @@ struct UninstallerView: View {
             if let target = uninstaller.target {
                 HStack(spacing: HexaTheme.Spacing.s) {
                     Image(nsImage: target.icon).resizable().frame(width: 18, height: 18)
-                    Text(target.name).font(.hexa(.body))
+                    Text(uninstaller.targets.map(\.name).joined(separator: ", ")).font(.hexa(.body))
+                        .lineLimit(2)
                 }
             }
         }
@@ -213,8 +222,11 @@ struct UninstallerView: View {
             if let target = uninstaller.target {
                 Image(nsImage: target.icon).resizable().frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: HexaTheme.Spacing.xs) {
-                    Text(target.name).font(.hexa(.heading))
-                    Text(target.bundleID ?? target.url.path)
+                    Text(uninstaller.targets.map(\.name).joined(separator: ", ")).font(.hexa(.heading))
+                        .lineLimit(1)
+                    Text(uninstaller.targets.count == 1
+                         ? (target.bundleID ?? target.url.path)
+                         : uninstaller.targets.map { $0.bundleID ?? $0.url.path }.joined(separator: ", "))
                         .font(.hexa(.label)).foregroundStyle(HexaTheme.fgSecondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
@@ -246,7 +258,9 @@ struct UninstallerView: View {
                         Label(l10n.s.cleanerOptionalSection, hexaIcon: "questionmark.circle")
                             .foregroundStyle(HexaTheme.statusWarning)
                     }
-                    Text(prettyPath(item.url))
+                    Text(uninstaller.targets.count > 1 && item.targetName != nil
+                         ? "\(item.targetName ?? "") · \(prettyPath(item.url))"
+                         : prettyPath(item.url))
                         .foregroundStyle(HexaTheme.fgTertiary)
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -278,8 +292,12 @@ struct UninstallerView: View {
             secondaryDisabled: uninstaller.isRemovingWithHomebrew,
             primaryTitle: removeButtonTitle,
             primaryAction: {
-                if let confirmation = uninstaller.homebrewRemovalConfirmation {
-                    pendingHomebrewRemoval = confirmation
+                if !uninstaller.selectedHomebrewPackages.isEmpty {
+                    if let confirmation = uninstaller.homebrewRemovalConfirmation {
+                        pendingHomebrewRemoval = confirmation
+                    } else {
+                        uninstaller.reportInvalidHomebrewConfirmation()
+                    }
                 } else if !uninstaller.appsQuitBySelection.isEmpty {
                     pendingQuitNames = uninstaller.appsQuitBySelection
                 } else {
@@ -287,7 +305,7 @@ struct UninstallerView: View {
                 }
             },
             primaryDisabled: !uninstaller.items.contains(where: \.include)
-                             || (uninstaller.selectedHomebrewPackage != nil && homebrew.isBusy)
+                             || (!uninstaller.selectedHomebrewPackages.isEmpty && homebrew.isBusy)
         ) {
             VStack(alignment: .leading, spacing: HexaTheme.Spacing.xs) {
                 Text(String(format: l10n.s.uninstallerSelectedFormat,
@@ -300,7 +318,7 @@ struct UninstallerView: View {
     }
 
     private var removeButtonTitle: String {
-        uninstaller.selectedHomebrewPackage == nil ? l10n.s.uninstallerRemove : l10n.s.homebrewUninstall
+        uninstaller.selectedHomebrewPackages.isEmpty ? l10n.s.uninstallerRemove : l10n.s.homebrewUninstall
     }
 
     @ViewBuilder
@@ -321,10 +339,12 @@ struct UninstallerView: View {
 
     @ViewBuilder
     private var homebrewStatus: some View {
-        if let package = uninstaller.selectedHomebrewPackage {
+        let packages = uninstaller.selectedHomebrewPackages
+        if !packages.isEmpty {
+            let packageIDs = Set(packages.map(\.id))
             if let status = homebrew.operationStatus,
                status.action == .uninstall,
-               status.package?.id == package.id {
+               !packageIDs.isDisjoint(with: Set(status.packages.map(\.id))) {
                 HomebrewOperationStatusView(status: status,
                                             log: homebrew.log,
                                             terminalFallbackCommand: homebrew.terminalFallbackCommand,
@@ -345,14 +365,15 @@ struct UninstallerView: View {
                         .padding(.bottom, HexaTheme.Spacing.m)
                 }
             } else {
-                Label(String(format: l10n.s.uninstallerHomebrewPackageFormat, package.displayName),
+                Label(String(format: l10n.s.uninstallerHomebrewPackageFormat,
+                             packages.map(\.displayName).joined(separator: ", ")),
                       hexaIcon: "shippingbox")
                     .font(.hexa(.label))
                     .foregroundStyle(HexaTheme.fgSecondary)
                     .padding(.horizontal, HexaTheme.Spacing.l)
                     .padding(.vertical, HexaTheme.Spacing.s)
             }
-            if uninstaller.homebrewAwaitingTerminal?.id == package.id {
+            if uninstaller.homebrewAwaitingTerminal {
                 Button(l10n.s.uninstallerTerminalContinue) {
                     uninstaller.continueAfterTerminal()
                 }

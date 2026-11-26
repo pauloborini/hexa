@@ -53,6 +53,10 @@ final class AppUninstaller: ObservableObject {
         let confidence: UninstallerSupport.LeftoverMatch
         let fileIdentity: UninstallerSupport.FileIdentity
         var include: Bool = false
+        /// The scanned target that attributed this leftover. Nil only in tests
+        /// and installer aliases synthesized after a bundle is already gone.
+        var targetURL: URL? = nil
+        var targetName: String? = nil
 
         var name: String { url.lastPathComponent }
 
@@ -62,28 +66,46 @@ final class AppUninstaller: ObservableObject {
     }
 
     @Published private(set) var phase: Phase = .empty
-    @Published private(set) var target: Target?
-    @Published private(set) var homebrewPackage: HomebrewPackage?
+    @Published private(set) var targets: [Target] = []
     @Published private(set) var errorMessage: String?
     @Published var items: [Leftover] = []
+    /// The first target, kept as the compact representation callers already
+    /// use while the batch-aware UI reads `targets`.
+    var target: Target? { targets.first }
     private var allowedRemovalPaths = Set<String>()
-    private var targetFileIdentity: UninstallerSupport.FileIdentity?
-    private var targetInfoIdentity: UninstallerSupport.FileIdentity?
-    /// TeamIDs read at scan time. Removal needs them once the bundle is gone.
-    private var targetTeamIDs = Set<String>()
+    private var targetStates: [TargetState] = []
     private var homebrewRemovalSize: Int64 = 0
-    private var homebrewRemovedApplication = false
+    private var homebrewRemovedApplicationPaths = Set<String>()
     private var homebrewRemovalObservation: AnyCancellable?
-    /// The package whose `brew uninstall` the user was sent to finish in
-    /// Terminal; the screen offers to recheck and go on with the leftovers.
-    @Published private(set) var homebrewAwaitingTerminal: HomebrewPackage?
+    private var pendingHomebrewTerminalConfirmation: HomebrewRemovalConfirmation?
+    /// The package batch whose `brew uninstall` the user was sent to finish
+    /// in Terminal; the screen offers to recheck and go on with the leftovers.
+    @Published private(set) var homebrewAwaitingTerminal = false
     /// Names of target apps that did not quit when asked. Removal waits for a
     /// second answer before force quitting them.
     @Published private(set) var appsThatDidNotQuit: [String] = []
-    private var installLinkURL: URL?
-    private var installLinkIdentity: UninstallerSupport.FileIdentity?
     @Published private(set) var removalNotices = Set<UninstallerSupport.RemovalNotice>()
     private var scanCancellation: UninstallerSupport.ScanCancellation?
+
+    private typealias InstallLink = (url: URL, identity: UninstallerSupport.FileIdentity, bundlePath: String)
+
+    private struct TargetState {
+        let target: Target
+        let fileIdentity: UninstallerSupport.FileIdentity
+        let infoIdentity: UninstallerSupport.FileIdentity
+        let installLink: InstallLink?
+        /// TeamIDs read at scan time. Removal needs them once the bundle is gone.
+        var teamIDs: Set<String>
+        var homebrewPackage: HomebrewPackage?
+
+        var key: String { target.url.standardizedFileURL.path }
+    }
+
+    private struct ScanOutcome {
+        let state: TargetState
+        let items: [Leftover]
+        let notices: Set<UninstallerSupport.RemovalNotice>
+    }
 
     struct ScanCandidate {
         let url: URL
@@ -99,17 +121,28 @@ final class AppUninstaller: ObservableObject {
 
     var selectedSize: Int64 { items.filter(\.include).reduce(0) { $0 + $1.size } }
     var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
-    var selectedHomebrewPackage: HomebrewPackage? {
-        guard items.contains(where: { $0.category == .app && $0.include }) else { return nil }
-        return homebrewPackage
+
+    private func targetKey(for item: Leftover) -> String? {
+        item.targetURL?.standardizedFileURL.path
     }
+
+    var selectedHomebrewPackages: [HomebrewPackage] {
+        let selectedTargetKeys = Set(items.filter { $0.category == .app && $0.include }
+            .compactMap { targetKey(for: $0) })
+        guard !selectedTargetKeys.isEmpty else { return [] }
+        return Self.uniqueHomebrewPackages(
+            targetPackages: targetStates.map { HomebrewTargetPackage(targetPath: $0.key, package: $0.homebrewPackage) },
+            selectedTargetKeys: selectedTargetKeys)
+    }
+
     var isRemovingWithHomebrew: Bool {
-        guard let package = selectedHomebrewPackage,
+        let selectedIDs = Set(selectedHomebrewPackages.map(\.id))
+        guard !selectedIDs.isEmpty,
               // Read-only status, per the consumption contract documented on
               // HomebrewManager.operationStatus.
               let status = HomebrewManager.shared.operationStatus else { return false }
         return status.action == .uninstall
-            && status.package?.id == package.id
+            && !selectedIDs.isDisjoint(with: Set(status.packages.map(\.id)))
             && status.isActive
     }
 
@@ -117,18 +150,72 @@ final class AppUninstaller: ObservableObject {
         phase == .removing || isRemovingWithHomebrew
     }
 
+    struct HomebrewTargetPackage {
+        let targetPath: String
+        let package: HomebrewPackage?
+    }
+
+    static func uniqueHomebrewPackages(targetPackages: [HomebrewTargetPackage],
+                                       selectedTargetKeys: Set<String>) -> [HomebrewPackage] {
+        var seen = Set<String>()
+        return targetPackages.compactMap { target in
+            guard selectedTargetKeys.contains(target.targetPath),
+                  let package = target.package,
+                  seen.insert(package.id).inserted else { return nil }
+            return package
+        }
+    }
+
+    static func homebrewTargetPathsByPackage(targetPackages: [HomebrewTargetPackage],
+                                             packageIDs: Set<String>) -> [String: [String]] {
+        targetPackages.reduce(into: [:]) { result, target in
+            guard let package = target.package, packageIDs.contains(package.id) else { return }
+            result[package.id, default: []].append(target.targetPath)
+        }
+    }
+
+    static func homebrewConfirmationTargetPaths(targetPackages: [HomebrewTargetPackage],
+                                                packages: [HomebrewPackage],
+                                                selectedTargetKeys: Set<String>) -> [String: [String]]? {
+        let paths = homebrewTargetPathsByPackage(targetPackages: targetPackages,
+                                                 packageIDs: Set(packages.map(\.id)))
+        guard paths.count == packages.count,
+              paths.values.allSatisfy({ targetPaths in
+                  targetPaths.allSatisfy(selectedTargetKeys.contains)
+              }) else { return nil }
+        return paths
+    }
+
+    static func interruptedHomebrewTargetPathsToReconcile(targetPaths: [String],
+                                                          alreadyRemoved: Set<String>,
+                                                          isAbsent: (String) -> Bool) -> [String] {
+        targetPaths.filter { !alreadyRemoved.contains($0) && isAbsent($0) }
+    }
+
     /// What the Homebrew confirmation showed, since the panel, Settings and the
     /// command bar share this uninstaller and can change it while it is open.
     struct HomebrewRemovalConfirmation {
-        let package: HomebrewPackage
-        let targetURL: URL
+        let packages: [HomebrewPackage]
+        let targetPathsByPackage: [String: [String]]
         let selectedIDs: Set<UUID>
+
+        var packageDisplayNames: String {
+            packages.map(\.displayName).joined(separator: ", ")
+        }
     }
 
     var homebrewRemovalConfirmation: HomebrewRemovalConfirmation? {
-        guard phase == .results, !isRemoving,
-              let package = selectedHomebrewPackage, let target else { return nil }
-        return HomebrewRemovalConfirmation(package: package, targetURL: target.url,
+        guard phase == .results, !isRemoving else { return nil }
+        let packages = selectedHomebrewPackages
+        guard !packages.isEmpty else { return nil }
+        let selectedTargetKeys = Set(items.filter { $0.category == .app && $0.include }
+            .compactMap { targetKey(for: $0) })
+        guard let targetPaths = Self.homebrewConfirmationTargetPaths(
+            targetPackages: targetStates.map { HomebrewTargetPackage(targetPath: $0.key, package: $0.homebrewPackage) },
+            packages: packages,
+            selectedTargetKeys: selectedTargetKeys) else { return nil }
+        return HomebrewRemovalConfirmation(packages: packages,
+                                           targetPathsByPackage: targetPaths,
                                            selectedIDs: Set(items.filter(\.include).map(\.id)))
     }
 
@@ -152,112 +239,227 @@ final class AppUninstaller: ObservableObject {
         errorMessage = nil
     }
 
-    /// Reads an app bundle and starts scanning for its leftovers.
+    func reportInvalidHomebrewConfirmation() {
+        errorMessage = L10n.shared.s.uninstallerConfirmationExpired
+    }
+
+    /// Reads one app bundle and starts scanning for its leftovers.
     @discardableResult
     func select(appURL: URL) -> Bool {
+        select(appURLs: [appURL])
+    }
+
+    /// Reads every accepted app bundle and starts one user-requested scan.
+    /// The batch is all-or-nothing: a refused app never makes a valid app
+    /// carry an error the person did not answer.
+    @discardableResult
+    func select(appURLs requestedURLs: [URL]) -> Bool {
         guard !isRemoving else { return false }
-        let selection: UninstallerSupport.Selection
-        switch UninstallerSupport.evaluateSelection(for: appURL) {
-        case let .success(resolved):
-            selection = resolved
-        case let .failure(refusal):
-            errorMessage = Self.refusalMessage(for: refusal)
+        var inputs: [(requestedURL: URL, selection: UninstallerSupport.Selection)] = []
+        var seen = Set<String>()
+        for appURL in requestedURLs {
+            let selection: UninstallerSupport.Selection
+            switch UninstallerSupport.evaluateSelection(for: appURL) {
+            case let .success(resolved):
+                selection = resolved
+            case let .failure(refusal):
+                errorMessage = Self.refusalMessage(for: refusal)
+                return false
+            }
+            guard seen.insert(selection.url.standardizedFileURL.path).inserted else { continue }
+            inputs.append((appURL, selection))
+        }
+        guard !inputs.isEmpty else {
+            errorMessage = L10n.shared.s.uninstallerSelectionUnavailable
             return false
         }
-        let bundleID = selection.bundleID
-        let selectedURL = selection.url
-        let selectedIdentity = selection.identity
-        let selectedInfoIdentity = selection.infoIdentity
-        let selectedInstallLink = selection.installLink
-        let selectedInstallLinkIdentity = selection.installLink.flatMap(UninstallerSupport.fileIdentity)
-        var name = FileManager.default.displayName(atPath: appURL.path)
-        if name.hasSuffix(".app") { name.removeLast(4) }
-        let icon = NSWorkspace.shared.icon(forFile: appURL.path)
 
-        target = Target(name: name, bundleID: bundleID, url: selectedURL, icon: icon)
-        targetFileIdentity = selectedIdentity
-        targetInfoIdentity = selectedInfoIdentity
-        installLinkURL = selectedInstallLinkIdentity == nil ? nil : selectedInstallLink
-        installLinkIdentity = selectedInstallLinkIdentity
-        removalNotices = []
-        homebrewPackage = nil
-        homebrewRemovalSize = 0
-        homebrewRemovedApplication = false
+        scanCancellation?.cancel()
         homebrewRemovalObservation?.cancel()
         homebrewRemovalObservation = nil
-        homebrewAwaitingTerminal = nil
+        removalNotices = []
+        homebrewRemovalSize = 0
+        homebrewRemovedApplicationPaths = []
+        pendingHomebrewTerminalConfirmation = nil
+        homebrewAwaitingTerminal = false
         appsThatDidNotQuit = []
         items = []
         allowedRemovalPaths = []
-        targetTeamIDs = []
         errorMessage = nil
+
+        let states: [TargetState] = inputs.map { input in
+            var name = FileManager.default.displayName(atPath: input.requestedURL.path)
+            if name.hasSuffix(".app") { name.removeLast(4) }
+            let target = Target(name: name,
+                                bundleID: input.selection.bundleID,
+                                url: input.selection.url,
+                                icon: NSWorkspace.shared.icon(forFile: input.requestedURL.path))
+            let link: InstallLink? = input.selection.installLink.flatMap { url in
+                guard let identity = UninstallerSupport.fileIdentity(at: url) else { return nil }
+                return (url, identity, input.selection.url.path)
+            }
+            return TargetState(target: target,
+                               fileIdentity: input.selection.identity,
+                               infoIdentity: input.selection.infoIdentity,
+                               installLink: link,
+                               teamIDs: [],
+                               homebrewPackage: nil)
+        }
+        targetStates = states
+        targets = states.map(\.target)
+
         // A new selection supersedes any scan still running, even for the
-        // same app, so only this scan can deliver results.
-        scanCancellation?.cancel()
+        // same apps, so only this scan can deliver results.
         let cancellation = UninstallerSupport.ScanCancellation()
         scanCancellation = cancellation
         phase = .scanning
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard !cancellation.isCancelled else { return }
-            let ownedBundleIDs = Self.allBundleIDs(in: selectedURL, fm: .default, cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
-            // Where the bundle sits does not decide whether its Library data
-            // is its own. A second installed copy still blocks the claim.
-            let knownApplications = Self.knownApplicationURLs(candidateBundleIDs: ownedBundleIDs, cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
-            let knownApplicationIDs = Self.applicationBundleIdentifiers(in: knownApplications, cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
-            let exclusiveBundleIDs = Self.exclusiveOwnedBundleIDs(
-                in: selectedURL, candidates: ownedBundleIDs,
-                knownApplicationIDs: knownApplicationIDs, cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
-            let signing = Self.signingIdentity(in: selectedURL, requireValidSignature: true, cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
-            let exclusiveGroupIDs = Self.exclusiveGroupIDs(
-                signing.groupIDs, selectedTeamIDs: signing.teamIDs,
-                selectedURL: selectedURL, knownApplications: knownApplications, cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
-            let notices = UninstallerSupport.removalNotices(in: selectedURL)
-            guard !cancellation.isCancelled else { return }
-            let found = Self.collect(appURL: selectedURL,
-                                     primaryBundleID: bundleID,
-                                     exclusiveBundleIDs: exclusiveBundleIDs,
-                                     teamIDs: signing.teamIDs,
-                                     exclusiveGroupIDs: exclusiveGroupIDs,
-                                     cancellation: cancellation)
-            guard !cancellation.isCancelled else { return }
+            var outcomes: [ScanOutcome] = []
+            for state in states {
+                guard !cancellation.isCancelled else { return }
+                if let outcome = Self.scanOutcome(for: state, cancellation: cancellation) {
+                    outcomes.append(outcome)
+                }
+            }
+            guard !cancellation.isCancelled, outcomes.count == states.count else { return }
+            let merged = Self.mergedLeftovers(from: outcomes)
             DispatchQueue.main.async {
-                guard let self, !cancellation.isCancelled,
-                      self.phase == .scanning, self.target?.url == selectedURL else { return }
-                guard Self.applicationIdentityMatches(
-                    selectedURL, appIdentity: selectedIdentity,
-                    infoIdentity: selectedInfoIdentity) else {
-                    self.reset()
-                    return
-                }
-                HomebrewManager.shared.packageManagingApplication(at: selectedURL) { [weak self] package in
-                    // Drop the result if the user picked a different app (or reset)
-                    // while this scan was running — never show A's files under B.
-                    guard let self, !cancellation.isCancelled,
-                          self.phase == .scanning, self.target?.url == selectedURL else { return }
-                    guard Self.applicationIdentityMatches(
-                        selectedURL, appIdentity: selectedIdentity,
-                        infoIdentity: selectedInfoIdentity) else {
-                        self.reset()
-                        return
-                    }
-                    self.items = found
-                    self.removalNotices = notices
-                    self.homebrewPackage = package
-                    self.allowedRemovalPaths = Set(found.map { $0.url.standardizedFileURL.path })
-                    self.targetTeamIDs = signing.teamIDs
-                    self.scanCancellation = nil
-                    self.phase = .results
-                }
+                guard let self, self.scanIsCurrent(outcomes, cancellation: cancellation) else { return }
+                self.resolveHomebrewPackages(outcomes: outcomes,
+                                             states: outcomes.map(\.state),
+                                             merged: merged,
+                                             cancellation: cancellation,
+                                             index: 0)
             }
         }
         return true
+    }
+
+    /// The per-target scan used by both single-app and batch selections.
+    /// Everything here is user-requested work already running on the scan
+    /// queue; nothing schedules or repeats it afterwards.
+    private static func scanOutcome(for state: TargetState,
+                                    cancellation: UninstallerSupport.ScanCancellation) -> ScanOutcome? {
+        let selectedURL = state.target.url
+        guard let bundleID = state.target.bundleID else { return nil }
+        let ownedBundleIDs = allBundleIDs(in: selectedURL, fm: .default, cancellation: cancellation)
+        guard !cancellation.isCancelled else { return nil }
+        // Where the bundle sits does not decide whether its Library data
+        // is its own. A second installed copy still blocks the claim.
+        let knownApplications = knownApplicationURLs(candidateBundleIDs: ownedBundleIDs, cancellation: cancellation)
+        guard !cancellation.isCancelled else { return nil }
+        let knownApplicationIDs = applicationBundleIdentifiers(in: knownApplications, cancellation: cancellation)
+        guard !cancellation.isCancelled else { return nil }
+        let exclusiveBundleIDs = exclusiveOwnedBundleIDs(
+            in: selectedURL, candidates: ownedBundleIDs,
+            knownApplicationIDs: knownApplicationIDs, cancellation: cancellation)
+        guard !cancellation.isCancelled else { return nil }
+        let signing = signingIdentity(in: selectedURL, requireValidSignature: true, cancellation: cancellation)
+        guard !cancellation.isCancelled else { return nil }
+        let exclusiveGroupIDs = exclusiveGroupIDs(
+            signing.groupIDs, selectedTeamIDs: signing.teamIDs,
+            selectedURL: selectedURL, knownApplications: knownApplications, cancellation: cancellation)
+        guard !cancellation.isCancelled else { return nil }
+        let notices = UninstallerSupport.removalNotices(in: selectedURL)
+        guard !cancellation.isCancelled else { return nil }
+        let found = collect(appURL: selectedURL,
+                            primaryBundleID: bundleID,
+                            exclusiveBundleIDs: exclusiveBundleIDs,
+                            teamIDs: signing.teamIDs,
+                            exclusiveGroupIDs: exclusiveGroupIDs,
+                            cancellation: cancellation)
+            .map { item in
+                var item = item
+                item.targetURL = selectedURL
+                item.targetName = state.target.name
+                return item
+            }
+        guard !cancellation.isCancelled else { return nil }
+        var scannedState = state
+        scannedState.teamIDs = signing.teamIDs
+        return ScanOutcome(state: scannedState, items: found, notices: notices)
+    }
+
+    /// Merges target scans without showing the same file twice. An exact
+    /// ownership match wins over a weaker name relation when both targets
+    /// reach the same path.
+    private static func mergedLeftovers(from outcomes: [ScanOutcome]) -> [Leftover] {
+        var merged: [Leftover] = []
+        var indexByPath: [String: Int] = [:]
+        for outcome in outcomes {
+            for item in outcome.items {
+                let key = item.url.standardizedFileURL.path
+                if let existing = indexByPath[key] {
+                    if merged[existing].confidence == .related && item.confidence == .exact {
+                        merged[existing] = item
+                    }
+                } else {
+                    indexByPath[key] = merged.count
+                    merged.append(item)
+                }
+            }
+        }
+        return merged.sorted { ($0.category.sortRank, -$0.size) < ($1.category.sortRank, -$1.size) }
+    }
+
+    private func scanIsCurrent(_ outcomes: [ScanOutcome],
+                               cancellation: UninstallerSupport.ScanCancellation) -> Bool {
+        guard !cancellation.isCancelled, phase == .scanning else { return false }
+        return targetStates.map(\.key) == outcomes.map(\.state.key)
+    }
+
+    /// Homebrew ownership is resolved one target at a time. The first answer
+    /// warms the manager's short-lived installed-cask cache, so the rest of
+    /// the batch does not repeat the read-only catalog command.
+    private func resolveHomebrewPackages(outcomes: [ScanOutcome],
+                                         states: [TargetState],
+                                         merged: [Leftover],
+                                         cancellation: UninstallerSupport.ScanCancellation,
+                                         index: Int) {
+        guard scanIsCurrent(outcomes, cancellation: cancellation) else { return }
+        guard index < states.count else {
+            commitScan(outcomes: outcomes, states: states, merged: merged, cancellation: cancellation)
+            return
+        }
+        let state = states[index]
+        HomebrewManager.shared.packageManagingApplication(at: state.target.url) { [weak self] package in
+            guard let self, self.scanIsCurrent(outcomes, cancellation: cancellation) else { return }
+            guard Self.applicationIdentityMatches(state.target.url,
+                                                  appIdentity: state.fileIdentity,
+                                                  infoIdentity: state.infoIdentity) else {
+                self.reset()
+                return
+            }
+            var nextStates = states
+            nextStates[index].homebrewPackage = package
+            self.resolveHomebrewPackages(outcomes: outcomes,
+                                         states: nextStates,
+                                         merged: merged,
+                                         cancellation: cancellation,
+                                         index: index + 1)
+        }
+    }
+
+    private func commitScan(outcomes: [ScanOutcome],
+                            states: [TargetState],
+                            merged: [Leftover],
+                            cancellation: UninstallerSupport.ScanCancellation) {
+        guard scanIsCurrent(outcomes, cancellation: cancellation) else { return }
+        for state in states {
+            guard Self.applicationIdentityMatches(state.target.url,
+                                                  appIdentity: state.fileIdentity,
+                                                  infoIdentity: state.infoIdentity) else {
+                reset()
+                return
+            }
+        }
+        items = merged
+        removalNotices = Set(outcomes.flatMap(\.notices))
+        targetStates = states
+        allowedRemovalPaths = Set(merged.map { $0.url.standardizedFileURL.path })
+        scanCancellation = nil
+        phase = .results
     }
 
     func setInclude(_ include: Bool, for id: UUID) {
@@ -280,19 +482,15 @@ final class AppUninstaller: ObservableObject {
         guard !isRemoving else { return }
         scanCancellation?.cancel()
         scanCancellation = nil
-        target = nil
-        targetFileIdentity = nil
-        targetInfoIdentity = nil
-        installLinkURL = nil
-        installLinkIdentity = nil
+        targets = []
+        targetStates = []
         removalNotices = []
-        targetTeamIDs = []
-        homebrewPackage = nil
         homebrewRemovalSize = 0
-        homebrewRemovedApplication = false
+        homebrewRemovedApplicationPaths = []
         homebrewRemovalObservation?.cancel()
         homebrewRemovalObservation = nil
-        homebrewAwaitingTerminal = nil
+        pendingHomebrewTerminalConfirmation = nil
+        homebrewAwaitingTerminal = false
         appsThatDidNotQuit = []
         items = []
         allowedRemovalPaths = []
@@ -302,13 +500,24 @@ final class AppUninstaller: ObservableObject {
 
     // MARK: - Removal
 
-    /// The target app and any background app embedded inside it that are
+    /// Target apps whose bundle is part of the current removal selection.
+    private func targetStatesQuitBySelection() -> [TargetState] {
+        let keys = Set(items.filter { $0.category == .app && $0.include }
+            .compactMap { targetKey(for: $0) })
+        return targetStates.filter { keys.contains($0.key) }
+    }
+
+    /// The target apps and any background apps embedded inside them that are
     /// running now. Embedded helpers do not always share the main bundle ID.
-    private func runningTargetApplications() -> [NSRunningApplication] {
-        guard let targetURL = target?.url else { return [] }
+    private func runningTargetApplications(in states: [TargetState]) -> [NSRunningApplication] {
+        let targetURLs = states.map(\.target.url)
+        var seen = Set<pid_t>()
         return NSWorkspace.shared.runningApplications.filter { app in
-            app.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == targetURL
-                || UninstallerSupport.isNestedBundle(app.bundleURL, in: targetURL)
+            guard seen.insert(app.processIdentifier).inserted else { return false }
+            return targetURLs.contains { targetURL in
+                app.bundleURL?.resolvingSymlinksInPath().standardizedFileURL == targetURL
+                    || UninstallerSupport.isNestedBundle(app.bundleURL, in: targetURL)
+            }
         }
     }
 
@@ -316,38 +525,31 @@ final class AppUninstaller: ObservableObject {
     /// quit. Only a selected app bundle (or something inside it) quits them;
     /// leftovers alone never touch a process.
     var appsQuitBySelection: [String] {
-        guard items.contains(where: { $0.category == .app && $0.include }) else { return [] }
-        return runningTargetApplications().map { $0.localizedName ?? target?.name ?? "" }
+        let states = targetStatesQuitBySelection()
+        guard !states.isEmpty else { return [] }
+        return runningTargetApplications(in: states).map { app in
+            app.localizedName ?? states.first?.target.name ?? ""
+        }
     }
 
-    /// `quitConfirmed` is the user's yes to quitting the running app; without
-    /// it a selection that needs the app closed does nothing.
+    /// `quitConfirmed` is the user's yes to quitting the running apps; without
+    /// it a selection that needs one of them closed does nothing.
     func removeSelected(quitConfirmed: Bool = false) {
         guard phase == .results, !isRemoving else { return }
         let chosen = items.filter(\.include)
         guard !chosen.isEmpty else { return }
-        // Only moving the bundle needs the app closed.
-        let runningAppsToTerminate = chosen.contains(where: { $0.category == .app })
-            ? runningTargetApplications() : []
+        // Only moving a bundle needs its app closed.
+        let statesToQuit = targetStatesQuitBySelection()
+        let runningAppsToTerminate = runningTargetApplications(in: statesToQuit)
         guard runningAppsToTerminate.isEmpty || quitConfirmed else { return }
         appsThatDidNotQuit = []
         phase = .removing
         runningAppsToTerminate.forEach { $0.terminate() }
 
         let allowedPaths = allowedRemovalPaths
-        let selectedTeamIDs = targetTeamIDs
-        let targetURL = target?.url
-        let expectedTargetIdentity = targetFileIdentity
-        let expectedInfoIdentity = targetInfoIdentity
-        let candidateBundleIDs = Set(chosen.compactMap(\.ownerBundleID))
-        let candidateGroupIDs = Set(chosen.compactMap(\.ownerGroupID))
-        let evidenceBundleIDs = Set(chosen.compactMap(\.evidenceBundleID))
+        let states = targetStates
         let alreadyFreed = homebrewRemovalSize
-        let packageRemovedApplication = homebrewRemovedApplication
-        let installLink = installLinkURL.flatMap { url -> (url: URL, identity: UninstallerSupport.FileIdentity, bundlePath: String)? in
-            guard let identity = installLinkIdentity, let bundlePath = targetURL?.path else { return nil }
-            return (url, identity, bundlePath)
-        }
+        let packageRemovedApplicationPaths = homebrewRemovedApplicationPaths
         let adminPrompt = L10n.shared.s.uninstallerAdminUnloadPrompt
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -365,92 +567,137 @@ final class AppUninstaller: ObservableObject {
                     DispatchQueue.main.async {
                         guard let self, self.phase == .removing else { return }
                         self.phase = .results
-                        self.appsThatDidNotQuit = stillRunning.map { $0.localizedName ?? self.target?.name ?? "" }
+                        self.appsThatDidNotQuit = stillRunning.map {
+                            $0.localizedName ?? $0.bundleURL?.deletingPathExtension().lastPathComponent ?? ""
+                        }.filter { !$0.isEmpty }
                     }
                     return
                 }
             }
-            let targetIsOriginal = targetURL.map {
-                Self.applicationIdentityMatches(
-                    $0, appIdentity: expectedTargetIdentity,
-                    infoIdentity: expectedInfoIdentity)
-            } ?? false
-            let targetWasRemovedByPackageManager = packageRemovedApplication
-                && targetURL.map { UninstallerSupport.isConfirmedAbsent(at: $0) } == true
-            let mayClaimSharedData = targetIsOriginal || targetWasRemovedByPackageManager
-            let lookupBundleIDs = candidateBundleIDs.union(evidenceBundleIDs)
-            // Only the shared-data claims below read this roster, and building
-            // it opens every installed app. Same gate `select()` already uses.
-            let knownApplications = mayClaimSharedData
-                ? Self.knownApplicationURLs(candidateBundleIDs: lookupBundleIDs)
-                : []
-            let knownApplicationIDs = Self.applicationBundleIdentifiers(in: knownApplications)
-            let exclusiveBundleIDs = mayClaimSharedData ? targetURL.map {
-                Self.exclusiveOwnedBundleIDs(
-                    in: $0, candidates: candidateBundleIDs,
-                    knownApplicationIDs: knownApplicationIDs,
-                    requiresCurrentOwnership: !targetWasRemovedByPackageManager)
-            } ?? [] : []
-            let exclusiveEvidenceBundleIDs = mayClaimSharedData ? targetURL.map {
-                UninstallerSupport.exclusiveBundleIDs(
-                    evidenceBundleIDs, selectedURL: $0,
-                    knownApplications: knownApplicationIDs)
-            } ?? [] : []
-            let currentSigning: (teamIDs: Set<String>, groupIDs: Set<String>)
-            if targetIsOriginal, let targetURL {
-                currentSigning = Self.signingIdentity(
-                    in: targetURL, requireValidSignature: true)
-            } else if targetWasRemovedByPackageManager {
-                currentSigning = (selectedTeamIDs, candidateGroupIDs)
-            } else {
-                currentSigning = ([], [])
+
+            let fallbackTargetKey = states.count == 1 ? states[0].key : nil
+            let keyForItem: (Leftover) -> String? = { item in
+                item.targetURL?.standardizedFileURL.path ?? fallbackTargetKey
             }
-            let currentGroupIDs = currentSigning.groupIDs.intersection(candidateGroupIDs)
-            let exclusiveGroupIDs = mayClaimSharedData ? targetURL.map {
-                Self.exclusiveGroupIDs(currentGroupIDs,
-                                       selectedTeamIDs: currentSigning.teamIDs,
-                                       selectedURL: $0,
-                                       knownApplications: knownApplications)
-            } ?? [] : []
-            // Ownership depends on the sets computed above, so the check stays
-            // here and reaches the removal seam as a closure. Only leftovers
-            // are asked; the seam never consults it for the app bundle.
-            let keepsOwnership: (Leftover) -> Bool = { item in
-                if let groupID = item.ownerGroupID {
-                    return exclusiveGroupIDs.contains(groupID)
+            let batchLookupBundleIDs = Set(chosen.compactMap(\.ownerBundleID))
+                .union(Set(chosen.compactMap(\.evidenceBundleID)))
+            var knownApplicationsCache: [URL]?
+            var knownApplicationIDsCache: [(url: URL, bundleID: String)]?
+            func knownApplicationsSnapshot() -> ([URL], [(url: URL, bundleID: String)]) {
+                if let knownApplicationsCache, let knownApplicationIDsCache {
+                    return (knownApplicationsCache, knownApplicationIDsCache)
                 }
-                if let bundleID = item.ownerBundleID {
-                    let evidenceIsExclusive = item.evidenceBundleID.map(
-                        exclusiveEvidenceBundleIDs.contains) ?? true
-                    let sharedWithVendorSibling = targetURL.map {
-                        UninstallerSupport.vendorDataIsShared(
+                let applications = Self.knownApplicationURLs(candidateBundleIDs: batchLookupBundleIDs)
+                let identifiers = Self.applicationBundleIdentifiers(in: applications)
+                knownApplicationsCache = applications
+                knownApplicationIDsCache = identifiers
+                return (applications, identifiers)
+            }
+
+            var outcomes: [UninstallerSupport.RemovalOutcome] = [.removedPermanently(size: alreadyFreed)]
+            var failed: [Leftover] = []
+            var targetKeysWithChosenItems = Set<String>()
+
+            for state in states {
+                let targetChosen = chosen.filter { keyForItem($0) == state.key }
+                guard !targetChosen.isEmpty else { continue }
+                targetKeysWithChosenItems.insert(state.key)
+                let targetURL = state.target.url
+                let candidateBundleIDs = Set(targetChosen.compactMap(\.ownerBundleID))
+                let candidateGroupIDs = Set(targetChosen.compactMap(\.ownerGroupID))
+                let evidenceBundleIDs = Set(targetChosen.compactMap(\.evidenceBundleID))
+
+                let targetIsOriginal = Self.applicationIdentityMatches(
+                    targetURL,
+                    appIdentity: state.fileIdentity,
+                    infoIdentity: state.infoIdentity)
+                let targetWasRemovedByPackageManager = packageRemovedApplicationPaths.contains(state.key)
+                    && UninstallerSupport.isConfirmedAbsent(at: targetURL)
+                let mayClaimSharedData = targetIsOriginal || targetWasRemovedByPackageManager
+                let knownApplications: [URL]
+                let knownApplicationIDs: [(url: URL, bundleID: String)]
+                if mayClaimSharedData {
+                    (knownApplications, knownApplicationIDs) = knownApplicationsSnapshot()
+                } else {
+                    knownApplications = []
+                    knownApplicationIDs = []
+                }
+                let exclusiveBundleIDs = mayClaimSharedData
+                    ? Self.exclusiveOwnedBundleIDs(
+                        in: targetURL, candidates: candidateBundleIDs,
+                        knownApplicationIDs: knownApplicationIDs,
+                        requiresCurrentOwnership: !targetWasRemovedByPackageManager)
+                    : []
+                let exclusiveEvidenceBundleIDs = mayClaimSharedData
+                    ? UninstallerSupport.exclusiveBundleIDs(
+                        evidenceBundleIDs, selectedURL: targetURL,
+                        knownApplications: knownApplicationIDs)
+                    : []
+                let currentSigning: (teamIDs: Set<String>, groupIDs: Set<String>)
+                if targetIsOriginal {
+                    currentSigning = Self.signingIdentity(
+                        in: targetURL, requireValidSignature: true)
+                } else if targetWasRemovedByPackageManager {
+                    currentSigning = (state.teamIDs, candidateGroupIDs)
+                } else {
+                    currentSigning = ([], [])
+                }
+                let currentGroupIDs = currentSigning.groupIDs.intersection(candidateGroupIDs)
+                let exclusiveGroupIDs = mayClaimSharedData
+                    ? Self.exclusiveGroupIDs(currentGroupIDs,
+                                             selectedTeamIDs: currentSigning.teamIDs,
+                                             selectedURL: targetURL,
+                                             knownApplications: knownApplications)
+                    : []
+
+                // Ownership depends on the sets computed above, so the check stays
+                // here and reaches the removal seam as a closure. Only leftovers
+                // are asked; the seam never consults it for the app bundle.
+                let keepsOwnership: (Leftover) -> Bool = { item in
+                    if let groupID = item.ownerGroupID {
+                        return exclusiveGroupIDs.contains(groupID)
+                    }
+                    if let bundleID = item.ownerBundleID {
+                        let evidenceIsExclusive = item.evidenceBundleID.map(
+                            exclusiveEvidenceBundleIDs.contains) ?? true
+                        let sharedWithVendorSibling = UninstallerSupport.vendorDataIsShared(
                             bundleID: bundleID, confidence: item.confidence,
-                            selectedURL: $0, knownApplications: knownApplicationIDs)
-                    } ?? false
-                    return exclusiveBundleIDs.contains(bundleID)
-                        && evidenceIsExclusive
-                        && !sharedWithVendorSibling
-                }
-                return false
-            }
-            let isStillSafe: (Leftover) -> Bool = { item in
-                Self.removalIsStillSafe(item.url,
-                                        expectedIdentity: item.fileIdentity,
-                                        allowedPaths: allowedPaths,
-                                        targetURL: targetURL)
-            }
-            let removal = Self.removeChosen(chosen, keepsOwnership: keepsOwnership,
-                                            isStillSafe: isStillSafe,
-                                            installLink: installLink,
-                                            runAdmin: { targets in
-                guard let command = UninstallerSupport.privilegedBootoutCommand(targets: targets) else {
+                            selectedURL: targetURL, knownApplications: knownApplicationIDs)
+                        return exclusiveBundleIDs.contains(bundleID)
+                            && evidenceIsExclusive
+                            && !sharedWithVendorSibling
+                    }
                     return false
                 }
-                return AdminShell.runSync(command, prompt: adminPrompt)
-            })
-            let outcomes: [UninstallerSupport.RemovalOutcome] = [.removedPermanently(size: alreadyFreed)]
-                + removal.outcomes
-            let failed = removal.failed
+                let isStillSafe: (Leftover) -> Bool = { item in
+                    Self.removalIsStillSafe(item.url,
+                                            expectedIdentity: item.fileIdentity,
+                                            allowedPaths: allowedPaths,
+                                            targetURL: targetURL)
+                }
+                let removal = Self.removeChosen(targetChosen, keepsOwnership: keepsOwnership,
+                                                isStillSafe: isStillSafe,
+                                                installLink: state.installLink,
+                                                runAdmin: { targets in
+                    guard let command = UninstallerSupport.privilegedBootoutCommand(targets: targets) else {
+                        return false
+                    }
+                    return AdminShell.runSync(command, prompt: adminPrompt)
+                })
+                outcomes.append(contentsOf: removal.outcomes)
+                failed.append(contentsOf: removal.failed)
+            }
+
+            // When Homebrew took the whole selected payload of a target, there
+            // is no target batch left for removeChosen to clean the install
+            // alias. The alias still goes only after the bundle is gone.
+            for state in states where packageRemovedApplicationPaths.contains(state.key)
+                && !targetKeysWithChosenItems.contains(state.key) {
+                Self.trashInstallLinkIfBundleIsGone(state.installLink, failed: &failed,
+                                                    trash: { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) },
+                                                    finderTrash: { AppUninstaller.trashViaFinder($0) })
+            }
+
             let totals = UninstallerSupport.removalTotals(outcomes)
             DispatchQueue.main.async {
                 // The user may have dismissed the flow while files moved.
@@ -471,7 +718,7 @@ final class AppUninstaller: ObservableObject {
         guard phase == .results, !appsThatDidNotQuit.isEmpty,
               items.contains(where: { $0.category == .app && $0.include }) else { return }
         appsThatDidNotQuit = []
-        runningTargetApplications().forEach { $0.forceTerminate() }
+        runningTargetApplications(in: targetStatesQuitBySelection()).forEach { $0.forceTerminate() }
         removeSelected(quitConfirmed: true)
     }
 
@@ -485,7 +732,7 @@ final class AppUninstaller: ObservableObject {
     func retryFailed() {
         // While a Homebrew package is selected, the Homebrew flow owns removals, as in the UI.
         guard case let .done(_, _, failed) = phase, !failed.isEmpty, !isRemoving,
-              selectedHomebrewPackage == nil else { return }
+              selectedHomebrewPackages.isEmpty else { return }
         let kept = Self.leftoversKeptAfterRemoval(failed)
         items = kept.items
         allowedRemovalPaths = kept.allowedPaths
@@ -616,10 +863,14 @@ final class AppUninstaller: ObservableObject {
             $0.category == .app && $0.url.standardizedFileURL.path == bundle.path
         }
         guard !bundleFailed, UninstallerSupport.isConfirmedAbsent(at: bundle) else { return }
-        if let failure = removeInstallLink(url: installLink.url,
+        if var failure = removeInstallLink(url: installLink.url,
                                            identity: installLink.identity,
                                            trash: trash,
                                            finderTrash: finderTrash) {
+            // The alias is synthesized after the scan, so carry the target
+            // association a retry needs to put it back in the right batch.
+            failure.targetURL = bundle
+            failure.targetName = bundle.deletingPathExtension().lastPathComponent
             failed.append(failure)
         }
     }
@@ -754,31 +1005,37 @@ final class AppUninstaller: ObservableObject {
         }
     }
 
-    /// After Homebrew has removed its package receipt and app artifact, clean
-    /// only the other items the person selected. The app itself is excluded so
-    /// this flow never tries to remove the same bundle twice.
+    /// After Homebrew has removed the package receipts and app artifacts,
+    /// clean only the other items the person selected. The apps themselves are
+    /// excluded so this flow never tries to remove the same bundle twice.
     func removeSelectedWithHomebrew(confirmation: HomebrewRemovalConfirmation) {
+        let currentPackages = selectedHomebrewPackages
+        let confirmedIDs = Set(confirmation.packages.map(\.id))
+        let currentIDs = Set(currentPackages.map(\.id))
+        let currentTargetPaths = Self.homebrewTargetPathsByPackage(
+            targetPackages: targetStates.map { HomebrewTargetPackage(targetPath: $0.key, package: $0.homebrewPackage) },
+            packageIDs: currentIDs)
         guard phase == .results, !isRemoving,
-              target?.url == confirmation.targetURL,
-              selectedHomebrewPackage?.id == confirmation.package.id,
+              confirmedIDs == currentIDs,
+              confirmation.targetPathsByPackage == currentTargetPaths,
               Set(items.filter(\.include).map(\.id)) == confirmation.selectedIDs else {
             QuickToolHUD.show(icon: "exclamationmark.circle",
                               message: L10n.shared.s.uninstallerConfirmationExpired)
             return
         }
-        let package = confirmation.package
         let manager = HomebrewManager.shared
         // Read-only observation of the status contract documented on
         // HomebrewManager.operationStatus; the brew run itself stays driven
         // by HomebrewManager.
         guard manager.operation == nil else { return }
         errorMessage = nil
-        homebrewAwaitingTerminal = nil
+        pendingHomebrewTerminalConfirmation = nil
+        homebrewAwaitingTerminal = false
         manager.clearLog()
         homebrewRemovalObservation?.cancel()
         homebrewRemovalObservation = manager.$operationStatus
             .compactMap { $0 }
-            .filter { $0.action == .uninstall && $0.package?.id == package.id }
+            .filter { $0.action == .uninstall && Set($0.packages.map(\.id)) == confirmedIDs }
             .sink { [weak self] status in
                 guard status.result != .running else { return }
                 // An untrusted tap stops the run; trusting it from the card
@@ -789,77 +1046,134 @@ final class AppUninstaller: ObservableObject {
                 }
                 self?.homebrewRemovalObservation?.cancel()
                 self?.homebrewRemovalObservation = nil
+                if status.result != .succeeded {
+                    self?.reconcileInterruptedHomebrewRemoval(confirmation: confirmation)
+                }
                 if status.result == .succeeded {
                     self?.errorMessage = nil
-                    self?.finishRemovalAfterHomebrew(package: package)
+                    self?.finishRemovalAfterHomebrew(confirmation: confirmation)
                 } else if status.result == .cancelled {
                     self?.errorMessage = L10n.shared.s.homebrewOperationCancelled
                 } else if status.result == .needsTerminal {
                     self?.errorMessage = L10n.shared.s.homebrewTerminalFallback
-                    self?.homebrewAwaitingTerminal = package
+                    self?.pendingHomebrewTerminalConfirmation = confirmation
+                    self?.homebrewAwaitingTerminal = true
                 } else {
                     let err = status.lastActivity ?? manager.errorMessage
-                    self?.errorMessage = (err?.isEmpty == false) ? err : String(format: L10n.shared.s.homebrewOperationFailedFormat, package.displayName)
+                    self?.errorMessage = (err?.isEmpty == false) ? err : String(format: L10n.shared.s.homebrewOperationFailedFormat, confirmation.packageDisplayNames)
                 }
             }
-        manager.uninstall(package)
-    }
-
-    /// After the user ran the uninstall in Terminal: once the app bundle is
-    /// confirmed gone, goes on with the leftovers still selected, as if brew
-    /// had finished here.
-    func continueAfterTerminal() {
-        guard let package = homebrewAwaitingTerminal, phase == .results, !isRemoving,
-              let targetURL = target?.url else { return }
-        guard UninstallerSupport.isConfirmedAbsent(at: targetURL) else {
-            QuickToolHUD.show(icon: "exclamationmark.circle",
-                              message: L10n.shared.s.uninstallerTerminalStillInstalled)
-            return
-        }
-        homebrewAwaitingTerminal = nil
-        errorMessage = nil
-        finishRemovalAfterHomebrew(package: package)
-    }
-
-    private func finishRemovalAfterHomebrew(package: HomebrewPackage) {
-        guard phase == .results,
-              homebrewPackage?.id == package.id,
-              let app = items.first(where: { $0.category == .app && $0.include }),
-              let targetURL = target?.url else { return }
-        // Completion is published before the stored status stops reading as
-        // active. Clear the package before changing the guarded selection,
-        // and credit the app only after its absence is confirmed.
-        homebrewRemovedApplication = true
-        homebrewPackage = nil
-        setInclude(false, for: app.id)
-        if UninstallerSupport.isConfirmedAbsent(at: targetURL) {
-            homebrewRemovalSize = app.size
-        } else if UninstallerSupport.entryExists(at: targetURL) {
-            // Package removal succeeded but left the bundle. Re-select only the
-            // app so removeSelected can finish it under the package flag,
-            // counting size once when it is actually gone.
-            homebrewRemovalSize = 0
-            setInclude(true, for: app.id)
+        if confirmation.packages.count == 1, let package = confirmation.packages.first {
+            manager.uninstall(package)
         } else {
-            // A failed lookup is not proof of removal. Keep the failure visible.
-            homebrewRemovalSize = 0
-            homebrewRemovedApplication = false
-            setInclude(true, for: app.id)
-            phase = .done(movedToTrash: 0, freedPermanently: 0, failed: [app])
+            manager.uninstallCasks(confirmation.packages)
+        }
+    }
+
+    /// After the user ran the uninstall in Terminal: once every app bundle in
+    /// the batch is confirmed gone, goes on with the leftovers still selected,
+    /// as if brew had finished here.
+    func continueAfterTerminal() {
+        guard let confirmation = pendingHomebrewTerminalConfirmation,
+              phase == .results, !isRemoving else { return }
+        for package in confirmation.packages {
+            guard let targetPaths = confirmation.targetPathsByPackage[package.id] else { return }
+            for targetPath in targetPaths {
+                guard UninstallerSupport.isConfirmedAbsent(at: URL(fileURLWithPath: targetPath)) else {
+                    QuickToolHUD.show(icon: "exclamationmark.circle",
+                                      message: L10n.shared.s.uninstallerTerminalStillInstalled)
+                    return
+                }
+            }
+        }
+        pendingHomebrewTerminalConfirmation = nil
+        homebrewAwaitingTerminal = false
+        errorMessage = nil
+        finishRemovalAfterHomebrew(confirmation: confirmation)
+    }
+
+    private func reconcileInterruptedHomebrewRemoval(confirmation: HomebrewRemovalConfirmation) {
+        for package in confirmation.packages {
+            let candidates = confirmation.targetPathsByPackage[package.id] ?? []
+            let targetPaths = Self.interruptedHomebrewTargetPathsToReconcile(
+                targetPaths: candidates,
+                alreadyRemoved: homebrewRemovedApplicationPaths,
+                isAbsent: { path in
+                    guard let index = targetStates.firstIndex(where: { $0.key == path }) else { return false }
+                    return UninstallerSupport.isConfirmedAbsent(at: targetStates[index].target.url)
+                })
+            for targetPath in targetPaths {
+                guard let stateIndex = targetStates.firstIndex(where: { $0.key == targetPath }) else { continue }
+                homebrewRemovedApplicationPaths.insert(targetPath)
+                targetStates[stateIndex].homebrewPackage = nil
+                guard let app = items.first(where: {
+                    $0.category == .app && targetKey(for: $0) == targetPath
+                }) else { continue }
+                if app.include { homebrewRemovalSize += app.size }
+                setInclude(false, for: app.id)
+            }
+        }
+    }
+
+    private func finishRemovalAfterHomebrew(confirmation: HomebrewRemovalConfirmation) {
+        guard phase == .results else { return }
+        var lookupFailed: [Leftover] = []
+
+        let alreadyReconciled = homebrewRemovedApplicationPaths
+        var removals: [(targetPath: String, stateIndex: Int, app: Leftover)] = []
+        for package in confirmation.packages {
+            for targetPath in confirmation.targetPathsByPackage[package.id] ?? [] {
+                guard !alreadyReconciled.contains(targetPath) else { continue }
+                guard let stateIndex = targetStates.firstIndex(where: { $0.key == targetPath }),
+                      let app = items.first(where: {
+                          $0.category == .app && $0.include && targetKey(for: $0) == targetPath
+                      }) else {
+                    errorMessage = L10n.shared.s.uninstallerConfirmationExpired
+                    return
+                }
+                removals.append((targetPath, stateIndex, app))
+            }
+        }
+
+        for removal in removals {
+            let targetURL = targetStates[removal.stateIndex].target.url
+            // Completion is published before the stored status stops reading as
+            // active. Clear the package before changing the guarded selection,
+            // and credit the app only after its absence is confirmed.
+            homebrewRemovedApplicationPaths.insert(removal.targetPath)
+            targetStates[removal.stateIndex].homebrewPackage = nil
+            setInclude(false, for: removal.app.id)
+            if UninstallerSupport.isConfirmedAbsent(at: targetURL) {
+                homebrewRemovalSize += removal.app.size
+            } else if UninstallerSupport.entryExists(at: targetURL) {
+                // Package removal succeeded but left the bundle. Re-select only
+                // the app so removeSelected can finish it under the package
+                // flag, counting size once when it is actually gone.
+                setInclude(true, for: removal.app.id)
+            } else {
+                // A failed lookup is not proof of removal. Keep the failure visible.
+                homebrewRemovedApplicationPaths.remove(removal.targetPath)
+                setInclude(true, for: removal.app.id)
+                lookupFailed.append(removal.app)
+            }
+        }
+
+        guard lookupFailed.isEmpty else {
+            phase = .done(movedToTrash: 0, freedPermanently: homebrewRemovalSize,
+                          failed: lookupFailed)
             return
         }
         if items.contains(where: \.include) {
             removeSelected()
         } else {
             var linkFailed: [Leftover] = []
-            let link = installLinkURL.flatMap { url -> (url: URL, identity: UninstallerSupport.FileIdentity, bundlePath: String)? in
-                guard let identity = installLinkIdentity else { return nil }
-                return (url, identity, targetURL.path)
+            for state in targetStates where homebrewRemovedApplicationPaths.contains(state.key) {
+                Self.trashInstallLinkIfBundleIsGone(state.installLink, failed: &linkFailed,
+                                                    trash: { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) },
+                                                    finderTrash: { AppUninstaller.trashViaFinder($0) })
             }
-            Self.trashInstallLinkIfBundleIsGone(link, failed: &linkFailed,
-                                                trash: { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) },
-                                                finderTrash: { AppUninstaller.trashViaFinder($0) })
-            phase = .done(movedToTrash: 0, freedPermanently: homebrewRemovalSize, failed: linkFailed)
+            phase = .done(movedToTrash: 0, freedPermanently: homebrewRemovalSize,
+                          failed: linkFailed)
         }
     }
 

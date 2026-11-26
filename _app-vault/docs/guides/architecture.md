@@ -20,7 +20,7 @@ Ao contrário dos utilitários tradicionais de monitoramento e manutenção de s
 O Hexa não inclui nenhum código de rastreamento, análise de telemetria, identificadores de usuário ou dependência de servidores em nuvem:
 - Nenhum dado de hardware, arquivos inspecionados ou processos monitorados sai da máquina.
 - Não há cadastro de conta, chaves de API remotas nem coleta de métricas de uso anônimas.
-- Toda a lógica de verificação de atualizações de aplicativos e manipulação de arquivos reside localmente no sistema operacional.
+- Consultas de rede acontecem somente sob pedido do usuário: a verificação de apps de terceiros no módulo App Updates e a verificação do próprio Hexa no feed do GitHub Releases (DEC-012 e DEC-045). A manipulação de arquivos ocorre localmente.
 
 ### Exclusividade Apple Silicon - DEC-027
 O Hexa foi desenhado especificamente para a arquitetura ARM dos Macs modernos:

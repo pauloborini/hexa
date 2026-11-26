@@ -307,6 +307,8 @@ extension Strings {
         uninstallerDropSubtitle: "或選擇一個進行掃描",
         uninstallerChoose: "選擇 App…",
         uninstallerPickerTitle: "選擇 App",
+        uninstallerPickerMultiTitle: "選擇多個 App",
+        uninstallerPickerScanSelection: "掃描所選",
         uninstallerPickerSearch: "搜尋 App",
         uninstallerPickerEmpty: "找不到 App",
         uninstallerEmptyNote: "未經你確認，不會移除任何內容。",

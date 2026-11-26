@@ -13,7 +13,6 @@ struct ScreenshotEditorView: View {
     @ObservedObject private var l10n = L10n.shared
     @StateObject private var keyboard = ScreenshotShortcutContext()
 
-    @State private var editingText = ""
     @FocusState private var textFieldFocused: Bool
     @State private var dragInFlight = false
     @State private var dragStartView: CGPoint = .zero
@@ -351,7 +350,6 @@ struct ScreenshotEditorView: View {
                 }
                 model.endDrag(at: point, isTap: isTap)
                 if model.editingTextID != nil {
-                    editingText = ""
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         textFieldFocused = true
                     }
@@ -523,7 +521,7 @@ struct ScreenshotEditorView: View {
             let fontSize = max(11, ScreenshotRenderer.fontSize(for: annotation.textSize,
                                                                scale: model.scale) * zoom)
             let pad = model.backdropPaddingPixels
-            TextField(strings.textPlaceholder, text: $editingText)
+            TextField(strings.textPlaceholder, text: $model.editingTextDraft)
                 .textFieldStyle(.plain)
                 .font(.hexaManrope(size: fontSize, weight: .semibold))
                 .foregroundStyle(Color(nsColor: ScreenshotRenderer.nsColor(annotation.color)))
@@ -540,22 +538,20 @@ struct ScreenshotEditorView: View {
                 .offset(x: (annotation.rect.minX + pad) * zoom - 6,
                         y: (annotation.rect.minY + pad) * zoom - 3)
                 .onAppear {
-                    editingText = annotation.text
+                    model.editingTextDraft = annotation.text
                     DispatchQueue.main.async { textFieldFocused = true }
                 }
                 .onSubmit {
-                    model.commitText(editingID, text: editingText)
+                    model.commitActiveTextEdit()
                 }
                 .onExitCommand {
-                    model.commitText(editingID, text: editingText)
+                    model.commitActiveTextEdit()
                 }
         }
     }
 
     private func commitEditingTextIfNeeded() {
-        if let editingID = model.editingTextID {
-            model.commitText(editingID, text: editingText)
-        }
+        model.commitActiveTextEdit()
     }
 
     // MARK: - Tool rail

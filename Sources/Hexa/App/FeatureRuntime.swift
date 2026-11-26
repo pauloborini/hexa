@@ -219,6 +219,7 @@ final class FeatureRuntime: ObservableObject {
     private func finishAvailabilityChange() {
         revision += 1
         if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
+        if AppFeature.windowManager.isAvailable { WindowManagerService.shared.syncWithPreferences() }
     }
 
     /// What each feature must re-evaluate when its availability (or a
@@ -286,6 +287,7 @@ final class FeatureRuntime: ObservableObject {
         .menuBarHiding: {
             MainActor.assumeIsolated { MenuBarHidingService.shared.syncWithPreferences() }
         },
+        .windowManager: { WindowManagerService.shared.syncWithPreferences() },
         .appUpdates: { AppUpdatesService.shared.syncWithPreferences() },
         .monitorCPU: { FeatureRuntime.syncMonitor() },
         .monitorGPU: { FeatureRuntime.syncMonitor() },

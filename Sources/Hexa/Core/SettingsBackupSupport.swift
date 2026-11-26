@@ -127,9 +127,12 @@ enum SettingsBackupSupport {
         DefaultsKey.systemShortcutsSuppressed,
         // DDC capability belongs to one physical monitor on one Mac port.
         DefaultsKey.brightnessDDCWriteOnlyPaths,
-        // Restoring it would skip the one-time recheck of the cache above on
+        DefaultsKey.brightnessDDCWriteOnlyVerdicts,
+        // Restoring it would skip the one-time rechecks of the caches above on
         // a Mac that still holds its own stale verdicts.
         DefaultsKey.brightnessDDCWriteOnlyPathsRechecked,
+        DefaultsKey.brightnessDDCReadChecksumRechecked,
+        DefaultsKey.brightnessDDCHDMIConverterRechecked,
         DefaultsKey.brightnessForcedSoftwarePaths,
         DefaultsKey.brightnessExtendedDimmingPaths,
         // A fit measured against one Mac's camera housing would misfit another's.
@@ -165,7 +168,10 @@ enum SettingsBackupSupport {
               let settings = payload[settingsKey] as? [String: Any]
         else { return nil }
         let allowed = exportKeys()
-        let filtered = settings.filter { allowed.contains($0.key) && valueLooksRight($0.key, $0.value) }
+        var filtered = settings.filter { allowed.contains($0.key) && valueLooksRight($0.key, $0.value) }
+        if let margin = filtered[DefaultsKey.windowLayoutMarginPercent] as? Double {
+            filtered[DefaultsKey.windowLayoutMarginPercent] = WindowGapsConfig.sanitizedMarginPercent(margin)
+        }
         return portableNotchDisplay(portableMediaSettings(filtered))
     }
 

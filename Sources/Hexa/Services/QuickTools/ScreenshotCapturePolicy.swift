@@ -197,4 +197,20 @@ enum ScreenshotCapturePolicy {
         return AttachedCapturePlan(windowIDs: [targetID] + attachedIDs,
                                    bounds: plan.bounds)
     }
+
+    /// The single display whose frame contains `bounds` whole. A window
+    /// spanning multiple displays or hanging past a display edge has no single
+    /// display buffer that captures it unclipped, while touching an adjacent
+    /// display along a zero-width seam does not count as spanning.
+    static func displayCoveringWindow<Display>(_ bounds: CGRect,
+                                               in displays: [Display],
+                                               frame: KeyPath<Display, CGRect>) -> Display? {
+        guard !bounds.isEmpty else { return nil }
+        let hits = displays.filter { !bounds.intersection($0[keyPath: frame]).isEmpty }
+        guard hits.count == 1,
+              let display = hits.first,
+              display[keyPath: frame].contains(bounds)
+        else { return nil }
+        return display
+    }
 }

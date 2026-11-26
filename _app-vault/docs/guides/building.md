@@ -14,6 +14,7 @@ Para compilar o Hexa a partir do código-fonte, certifique-se de atender aos seg
   - Xcode 16 ou superior, ou Command Line Tools equivalentes (`xcode-select --install`). O manifesto declara `swift-tools-version:5.9`, mas o código usa APIs do SDK do macOS 15 (por exemplo `onScrollGeometryChange`), que não existem no Xcode 15.
   - Python 3 para o `build.sh` (o `python3` do macOS basta). Os scripts de DMG (`scripts/release/prepare_dmg.py`) exigem Python 3.11 ou superior e os módulos de `scripts/release/requirements.txt`.
   - Uma identidade de assinatura de código no Keychain com Team ID (por exemplo, Apple Development ou Developer ID Application). Sem ela o `build.sh` falha (seção 4).
+  - Chave pública do atualizador em `scripts/release/sparkle_ed_public.txt`, preenchida. Sem ela o `build.sh` falha fora do modo `--probe` (DEC-045).
   - Gitleaks, só para o build de release (`scripts/release/build-release.sh`).
 
 O comando `scripts/release/check-secrets.sh`, chamado pelo `build-release.sh`, verifica o histórico Git e os
@@ -32,7 +33,8 @@ Alvos do Package.swift
 ├── Hexa (Executable Target)
 │   ├── VMStatisticsCompat (System Library Target)
 │   ├── FanControlCore (Library Target)
-│   └── NotchPlaybackCore (Library Target)
+│   ├── NotchPlaybackCore (Library Target)
+│   └── Sparkle (Package Dependency)
 ├── FanControlHelper (Executable Target)
 │   └── FanControlCore (Library Target)
 ├── NowPlayingAdapter (Dynamic Library Target)
@@ -45,6 +47,7 @@ Alvos do Package.swift
 ### Detalhamento dos Alvos
 
 - **`Hexa`:** O executável principal do aplicativo. Contém a interface do usuário em SwiftUI, o controlador de barra de menus (menu bar), gerenciamento de preferências e os serviços dos módulos.
+- **`Sparkle`:** Dependência de pacote do alvo `Hexa`, na versão 2.10.1 ou superior, usada só pelo atualizador do próprio app (DEC-045). Fixada em `Package.resolved`.
 - **`FanControlHelper`:** Executável auxiliar e isolado, responsável por interagir diretamente com o Apple Silicon SMC para leitura de sensores de temperatura e ajuste de rotação das ventoinhas via protocolo XPC seguro.
 - **`FanControlCore`:** Biblioteca estática compartilhada entre o aplicativo principal e o helper, contendo estruturas de dados, limites de segurança térmica e protocolos de comunicação.
 - **`NotchPlaybackCore`:** Biblioteca compartilhada com a lógica de controle de mídia e comunicação de reprodução para a Dynamic Island.
@@ -85,12 +88,13 @@ O script realiza as seguintes etapas automaticamente:
    - `Contents/MacOS/Hexa`: Executável principal.
    - `Contents/MacOS/FanControlHelper`: Executável do helper do Fan Control.
    - `Contents/Frameworks/libNowPlayingAdapter.dylib`: Biblioteca dinâmica do reprodutor.
+   - `Contents/Frameworks/Sparkle.framework`: Framework do atualizador, copiado do build e assinado com a identidade do app.
    - `Contents/Library/LaunchDaemons/<bundle id>.fan-control.plist`: Serviço Mach que ativa o helper sob demanda, sem `RunAtLoad`.
    - `Contents/Resources/now-playing.pl`: Ponte que carrega a dylib do reprodutor.
    - `Contents/Resources/hexa_Hexa.bundle`: Recursos de fontes (Instrument Serif, Manrope, IBM Plex Mono), ícones Lucide e marca.
    - `Contents/Resources/AppIcon.icns`: Ícone oficial do aplicativo.
    - `Contents/Resources/LICENSE`, `CHANGELOG.md` e `*.lproj/InfoPlist.strings`: Texto da licença, notas da versão e textos de permissão localizados.
-   - `Contents/Info.plist`: Metadados com carimbo de commit e identificadores de versão.
+   - `Contents/Info.plist`: Metadados com carimbo de commit e identificadores de versão. Fora do `--probe`, também grava `SUFeedURL` e `SUPublicEDKey`, e desliga a verificação e o download automáticos do Sparkle (DEC-045).
 3. Aplica assinatura de código local (*codesign*) com uma identidade de assinatura do Keychain do macOS. A identidade precisa ter Team ID: assinatura ad-hoc não autentica o FanControl e o script falha sem ela. O script procura primeiro as identidades do Team ID padrão do mantenedor; sem correspondência, usa a única identidade de assinatura disponível e falha se houver mais de uma. `HEXA_CODESIGN_IDENTITY` força a identidade e `HEXA_CODESIGN_TEAM_ID` define o Team ID procurado, por exemplo:
    ```bash
    HEXA_CODESIGN_TEAM_ID=<TEAM_ID> ./build.sh
@@ -182,7 +186,7 @@ build/hexa-probe.app/Contents/MacOS/Hexa --notch-presentation-test --media-layou
 
 ## 7. Diretrizes para Contribuição
 
-- **Sem Dependências Externas Pesadas:** O `Package.swift` não declara dependências de pacotes; o Hexa utiliza apenas recursos de código aberto embutidos (fontes e ícones) e frameworks nativos da Apple. Evite introduzir dependências externas de pacotes de terceiros.
+- **Dependência de pacote única:** O Hexa declara só o Sparkle, para o atualizador próprio (DEC-045). Fontes e ícones embutidos e frameworks nativos da Apple seguem como padrão; evite introduzir outras dependências de pacotes de terceiros.
 - **Respeito ao Princípio On-Demand:** Qualquer nova função ou melhoria deve respeitar a DEC-002: painéis e scans só rodam quando abertos ou pedidos, sem polling, timers automáticos ou alertas em fundo, salvo as exceções nominadas na própria decisão.
 - **Privacidade Local-First:** Sem telemetria, análise, rastreamento ou conta de usuário (DEC-005).
 - **Validação antes de entregar:** `swift build` com todos os alvos compilando, `swift test` quando a mudança tocar código com testes e `git diff HEAD --check` sem erros.

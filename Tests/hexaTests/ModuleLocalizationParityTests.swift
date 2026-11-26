@@ -32,7 +32,8 @@ final class ModuleLocalizationParityTests: XCTestCase {
         \.pressureCritical, \.monitorUnavailable, \.energyAppsTitle, \.energyAppsIdle, \.uninstallerName,
         \.uninstallerEnableCaption, \.uninstallerStep1, \.uninstallerStep2, \.uninstallerStep3,
         \.uninstallerMenuItem, \.uninstallerDropTitle, \.uninstallerDropSubtitle, \.uninstallerChoose,
-        \.uninstallerPickerTitle, \.uninstallerPickerSearch, \.uninstallerPickerEmpty, \.uninstallerEmptyNote,
+        \.uninstallerPickerTitle, \.uninstallerPickerMultiTitle, \.uninstallerPickerScanSelection,
+        \.uninstallerPickerSearch, \.uninstallerPickerEmpty, \.uninstallerEmptyNote,
         \.uninstallerFDANote, \.uninstallerFDAGrant, \.uninstallerFDAHint, \.uninstallerFDARelaunch,
         \.uninstallerScanning, \.uninstallerRemoving, \.uninstallerFoundTitle, \.uninstallerSelectedFormat,
         \.uninstallerRemove, \.uninstallerCancel, \.uninstallerConfirmationExpired, \.uninstallerQuitTitle,
@@ -216,6 +217,7 @@ final class ModuleLocalizationParityTests: XCTestCase {
                 ("connectedDevices", FeatureStrings.connectedDevices(language)),
                 ("mediaImageConverter", MediaImageConverterStrings.localized(language)),
                 ("menuBarHiding", FeatureStrings.menuBarHiding(language)),
+                ("windowManager", FeatureStrings.windowManager(language)),
             ]
             for (catalog, value) in catalogs {
                 for child in Mirror(reflecting: value).children {

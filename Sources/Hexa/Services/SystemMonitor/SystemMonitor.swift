@@ -536,7 +536,7 @@ final class SystemMonitor: ObservableObject {
         shouldRun && currentPlan(defaults: defaults).any
     }
 
-    private struct SamplingPlan: Equatable {
+    struct SamplingPlan: Equatable {
         var needCPU = false
         var needMemory = false
         var needNetwork = false
@@ -579,8 +579,21 @@ final class SystemMonitor: ObservableObject {
     }
 
     private func currentPlan(defaults: UserDefaults) -> SamplingPlan {
+        Self.samplingPlan(defaults: defaults,
+                          shouldRun: shouldRun,
+                          fullMonitorVisible: fullMonitorVisible,
+                          menuPanelNeeds: menuPanelNeeds.merging(notchDetailNeeds).merging(workspaceNeeds),
+                          notchVisible: notchVisible,
+                          notchAccessoryMonitoring: notchAccessoryMonitoring)
+    }
+
+    static func samplingPlan(defaults: UserDefaults,
+                             shouldRun: Bool,
+                             fullMonitorVisible: Bool,
+                             menuPanelNeeds: SystemMonitorPanelNeeds,
+                             notchVisible: Bool = false,
+                             notchAccessoryMonitoring: Bool = false) -> SamplingPlan {
         guard shouldRun else { return SamplingPlan() }
-        let menuPanelNeeds = self.menuPanelNeeds.merging(notchDetailNeeds).merging(workspaceNeeds)
         var plan = SamplingPlan()
         let hasInternalBattery = PowerSampler.hasInternalBattery
         let panelNeedsSystem = fullMonitorVisible || menuPanelNeeds.system
@@ -601,7 +614,7 @@ final class SystemMonitor: ObservableObject {
         plan.needDisk = panelNeedsDisk
             || defaults.bool(forKey: DefaultsKey.menuBarDiskUsage)
             || defaults.bool(forKey: DefaultsKey.menuBarDiskActivity)
-        plan.needDiskHealth = menuPanelNeeds.disk
+        plan.needDiskHealth = panelNeedsDisk
         plan.needPower = panelNeedsPower || panelBattery
             || defaults.bool(forKey: DefaultsKey.menuBarPower)
             || (hasInternalBattery && defaults.bool(forKey: DefaultsKey.menuBarBattery))

@@ -307,6 +307,8 @@ extension Strings {
         uninstallerDropSubtitle: "또는 검사할 앱 선택",
         uninstallerChoose: "앱 선택…",
         uninstallerPickerTitle: "앱 선택",
+        uninstallerPickerMultiTitle: "여러 앱 선택",
+        uninstallerPickerScanSelection: "선택 항목 스캔",
         uninstallerPickerSearch: "앱 검색",
         uninstallerPickerEmpty: "앱을 찾을 수 없습니다",
         uninstallerEmptyNote: "검토 없이 삭제되는 항목은 없습니다.",

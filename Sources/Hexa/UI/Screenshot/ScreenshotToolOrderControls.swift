@@ -203,6 +203,11 @@ struct ScreenshotToolOrderControls: View {
             errorText = tool.screenshotTitle(strings) + " · " + shortcut.displayString + "\n" + reason
             return
         }
+        if let shortcut, digit == nil,
+           let conflict = WindowManagerService.activeActionTitle(for: shortcut, language: l10n.language) {
+            errorText = String(format: l10n.s.shortcutConflictFormat, conflict)
+            return
+        }
         let assignment = ScreenshotSupport.Tool.assigningBinding(
             shortcut, digit: digit, to: tool, orderRaw: orderRaw, bindingsRaw: bindingsRaw)
         orderRaw = assignment.orderRaw

@@ -1131,6 +1131,7 @@ extension AppFeature {
         case .screenOCR: return s.ocrName
         case .dockDisplayLock: return FeatureStrings.dockDisplayLock(L10n.shared.language).title
         case .menuBarHiding: return FeatureStrings.menuBarHiding(L10n.shared.language).title
+        case .windowManager: return FeatureStrings.windowManager(L10n.shared.language).title
         case .notchGestures: return FeatureStrings.notchGestures(L10n.shared.language).title
         case .notchTimer: return FeatureStrings.notchActivities(L10n.shared.language).timer
         case .notchAccessories: return FeatureStrings.notchActivities(L10n.shared.language).accessories
@@ -1169,6 +1170,7 @@ extension AppFeature {
         case .screenOCR: return hub.descScreenOCR
         case .dockDisplayLock: return FeatureStrings.dockDisplayLock(L10n.shared.language).hubDescription
         case .menuBarHiding: return FeatureStrings.menuBarHiding(L10n.shared.language).hubDescription
+        case .windowManager: return FeatureStrings.windowManager(L10n.shared.language).hubDescription
         case .notchGestures: return FeatureStrings.notchGestures(L10n.shared.language).description
         case .notchTimer: return FeatureStrings.notchActivities(L10n.shared.language).timerDescription
         case .notchAccessories: return FeatureStrings.notchActivities(L10n.shared.language).accessoryDescription
