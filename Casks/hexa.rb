@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 cask "hexa" do
-  version "0.3.0"
-  sha256 "969a609e15bed120747725977b039657a51c875a67b09a36028e9cbe85352ee4"
+  version "0.4.0"
+  sha256 "57c23e0587d888b1a0b959f25330ed1a125c28d999030b6f4b9e417e7dfdd6f0"
 
   url "https://github.com/pauloborini/hexa/releases/download/v#{version}/hexa-#{version}-arm64.dmg"
   name "hexa"
