@@ -3,20 +3,20 @@
 ## Metadados
 
 - Versão: 0.4.0 (build 4)
-- Tag planejada: v0.4.0, ainda não criada
+- Tag: v0.4.0, anotada no SHA final de main e publicada
 - Data prevista: 2026-11-26
 - Branch de release: release/v0.4.0
 - SHA-base: 25ce7959a7162d91abd136d36eab408c85dc066d
-- SHA final em main: pendente
+- SHA final em main: b215d21bbe8568927d9bc0028f31ddf3f56d2a2b
 - Plataforma: macOS 14 ou posterior, arm64
-- GitHub Release: https://github.com/pauloborini/hexa/releases/tag/v0.4.0, pendente
-- Feed Sparkle: https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml, pendente
-- Homebrew Cask: permanece em 0.3.0 até a publicação
-- DMG: hexa-0.4.0-arm64.dmg, ainda não gerado
-- SHA-256 do DMG: pendente
-- Notarização do app e do DMG: pendente
-- Smoke arm64 R1-R3: pendente
-- Backup EdDSA: criar ou validar antes da publicação
+- GitHub Release: https://github.com/pauloborini/hexa/releases/tag/v0.4.0, publicada
+- Feed Sparkle: https://github.com/pauloborini/hexa/releases/latest/download/appcast.xml, HTTP 200 com enclosure versionado e assinatura EdDSA
+- Homebrew Cask: 0.4.0 com sha256 do DMG publicado
+- DMG: hexa-0.4.0-arm64.dmg, gerado, assinado e notarizado
+- SHA-256 do DMG: 57c23e0587d888b1a0b959f25330ed1a125c28d999030b6f4b9e417e7dfdd6f0
+- Notarização do app e do DMG: aceita pela Apple, staple validado
+- Smoke arm64 R1-R3: aprovado em máquina arm64 macOS 27.2, registro validado por smoke_record.py
+- Backup EdDSA: criado e verificado fora do repositório antes da publicação
 
 ## O que há de novo
 
@@ -40,4 +40,6 @@ Hexa 0.4.0 adds the Window Manager, improves capture, OCR and external display c
 
 - PR #17 integrado em develop no SHA 25ce7959a7162d91abd136d36eab408c85dc066d.
 - Anti-vazamento A/B, scan de segredos, swift build, swift test com 801 testes e zero falhas, e ./build.sh --release passaram antes da integração.
-- DMG oficial, assinatura Developer ID, notarização, appcast, smoke, tag e publicação ainda pendentes.
+- PR #18 integrada em main no merge commit b215d21bbe8568927d9bc0028f31ddf3f56d2a2b.
+- DMG oficial build 4 no SHA final de main, assinatura Developer ID, notarização, appcast EdDSA e smoke R1-R3 concluídos.
+- Tag v0.4.0 publicada; GitHub Release com appcast.xml, DMG, release.json e SHA256SUMS; feed latest público validado.
